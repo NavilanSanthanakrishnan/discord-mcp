@@ -69,128 +69,105 @@ def create_mcp(
     ) -> list[dict]:
         return await runtime.list_server_channels(guild_id, limit=limit, query=query)
 
-    @mcp.tool(name="read_dm", description="Read recent messages from a DM channel.")
-    async def read_dm(
-        channel_id: str,
-        limit: int = 20,
-        before: str | None = None,
-        after: str | None = None,
-        around: str | None = None,
-    ) -> list[dict]:
-        return await runtime.read_dm(
-            channel_id,
-            limit=limit,
-            before=before,
-            after=after,
-            around=around,
-        )
-
-    @mcp.tool(name="read_channel_messages", description="Read recent messages from any channel.")
-    async def read_channel_messages(
-        channel_id: str,
-        limit: int = 20,
-        before: str | None = None,
-        after: str | None = None,
-        around: str | None = None,
-    ) -> list[dict]:
-        return await runtime.read_channel_messages(
-            channel_id,
-            limit=limit,
-            before=before,
-            after=after,
-            around=around,
-        )
-
-    @mcp.tool(name="send_dm", description="Send a message to a DM channel.")
-    async def send_dm(channel_id: str, content: str) -> dict:
-        return await runtime.send_dm(channel_id, content)
-
     @mcp.tool(
-        name="send_channel_message",
-        description="Send a message to any channel the user can post in.",
-    )
-    async def send_channel_message(channel_id: str, content: str) -> dict:
-        return await runtime.send_channel_message(channel_id, content)
-
-    @mcp.tool(
-        name="reply_to_dm_message",
-        description="Reply to a specific message in a DM channel.",
-    )
-    async def reply_to_dm_message(channel_id: str, message_id: str, content: str) -> dict:
-        return await runtime.reply_to_dm_message(channel_id, message_id, content)
-
-    @mcp.tool(
-        name="reply_to_channel_message",
-        description="Reply to a specific message in any channel.",
-    )
-    async def reply_to_channel_message(channel_id: str, message_id: str, content: str) -> dict:
-        return await runtime.reply_to_channel_message(channel_id, message_id, content)
-
-    @mcp.tool(name="edit_dm_message", description="Edit one of your messages in a DM channel.")
-    async def edit_dm_message(channel_id: str, message_id: str, content: str) -> dict:
-        return await runtime.edit_dm_message(channel_id, message_id, content)
-
-    @mcp.tool(name="delete_dm_message", description="Delete one of your messages in a DM channel.")
-    async def delete_dm_message(channel_id: str, message_id: str) -> dict:
-        return await runtime.delete_dm_message(channel_id, message_id)
-
-    @mcp.tool(name="add_dm_reaction", description="Add a reaction to a DM message.")
-    async def add_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
-        return await runtime.add_dm_reaction(channel_id, message_id, emoji)
-
-    @mcp.tool(name="add_message_reaction", description="Add a reaction to any message.")
-    async def add_message_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
-        return await runtime.add_message_reaction(channel_id, message_id, emoji)
-
-    @mcp.tool(name="remove_dm_reaction", description="Remove your reaction from a DM message.")
-    async def remove_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
-        return await runtime.remove_dm_reaction(channel_id, message_id, emoji)
-
-    @mcp.tool(name="remove_message_reaction", description="Remove your reaction from any message.")
-    async def remove_message_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
-        return await runtime.remove_message_reaction(channel_id, message_id, emoji)
-
-    @mcp.tool(
-        name="send_typing_indicator",
-        description="Send one Discord typing indicator pulse to a DM channel.",
-    )
-    async def send_typing_indicator(channel_id: str) -> dict:
-        return await runtime.send_typing_indicator(channel_id)
-
-    @mcp.tool(
-        name="send_dm_attachments",
-        description="Send one DM message with one or more local file attachments.",
-    )
-    async def send_dm_attachments(
-        channel_id: str,
-        attachment_paths: list[str],
-        content: str | None = None,
-    ) -> dict:
-        return await runtime.send_dm_attachments(
-            channel_id,
-            attachment_paths=attachment_paths,
-            content=content,
-        )
-
-    @mcp.tool(
-        name="send_natural_dm",
+        name="read_messages",
         description=(
-            "Simulate natural typing for a DM based on WPM, then send the message."
+            "Read recent messages from a DM or server channel. Defaults to compact "
+            "token-efficient rows: person, message, time, ids."
         ),
     )
-    async def send_natural_dm(
+    async def read_messages(
+        channel_id: str,
+        limit: int = 20,
+        before: str | None = None,
+        after: str | None = None,
+        around: str | None = None,
+        compact: bool = True,
+    ) -> list[dict]:
+        return await runtime.read_messages(
+            channel_id,
+            limit=limit,
+            before=before,
+            after=after,
+            around=around,
+            compact=compact,
+        )
+
+    @mcp.tool(
+        name="send_message",
+        description=(
+            "Send a normal message to a DM or server channel. Server pings are plain "
+            "Discord mention text like <@USER_ID> or <@&ROLE_ID>."
+        ),
+    )
+    async def send_message(channel_id: str, content: str) -> dict:
+        return await runtime.send_message(channel_id, content)
+
+    @mcp.tool(
+        name="send_natural_message",
+        description=(
+            "Send typing indicators based on WPM, then send a message to any DM or "
+            "server channel."
+        ),
+    )
+    async def send_natural_message(
         channel_id: str,
         content: str,
         wpm: int | None = None,
         min_seconds: float | None = None,
         max_seconds: float | None = None,
     ) -> dict:
-        return await runtime.send_natural_dm(
+        return await runtime.send_natural_message(
             channel_id,
             content,
             wpm=wpm,
             min_seconds=min_seconds,
             max_seconds=max_seconds,
+        )
+
+    @mcp.tool(
+        name="reply_to_message",
+        description="Reply to a specific message in a DM or server channel.",
+    )
+    async def reply_to_message(channel_id: str, message_id: str, content: str) -> dict:
+        return await runtime.reply_to_message(channel_id, message_id, content)
+
+    @mcp.tool(name="edit_message", description="Edit one of your messages in any channel.")
+    async def edit_message(channel_id: str, message_id: str, content: str) -> dict:
+        return await runtime.edit_dm_message(channel_id, message_id, content)
+
+    @mcp.tool(name="delete_message", description="Delete one of your messages in any channel.")
+    async def delete_message(channel_id: str, message_id: str) -> dict:
+        return await runtime.delete_message(channel_id, message_id)
+
+    @mcp.tool(name="add_reaction", description="Add your reaction to a message.")
+    async def add_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.add_message_reaction(channel_id, message_id, emoji)
+
+    @mcp.tool(name="remove_reaction", description="Remove your reaction from a message.")
+    async def remove_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.remove_message_reaction(channel_id, message_id, emoji)
+
+    @mcp.tool(
+        name="send_typing_indicator",
+        description="Send one Discord typing indicator pulse to a DM or server channel.",
+    )
+    async def send_typing_indicator(channel_id: str) -> dict:
+        return await runtime.send_typing_indicator(channel_id)
+
+    @mcp.tool(
+        name="send_attachments",
+        description="Send one message with one or more local file attachments.",
+    )
+    async def send_attachments(
+        channel_id: str,
+        attachment_paths: list[str],
+        content: str | None = None,
+    ) -> dict:
+        return await runtime.send_attachments(
+            channel_id,
+            attachment_paths=attachment_paths,
+            content=content,
         )
 
     @mcp.tool(name="poll_new_dm_events", description="Poll incoming DM events captured by Gateway.")

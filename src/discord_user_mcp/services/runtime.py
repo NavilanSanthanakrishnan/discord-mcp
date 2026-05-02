@@ -226,6 +226,27 @@ class DiscordUserMcpRuntime:
             self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return [self._message_to_dict(message) for message in messages]
 
+    async def read_messages(
+        self,
+        channel_id: str,
+        *,
+        limit: int = 20,
+        before: str | None = None,
+        after: str | None = None,
+        around: str | None = None,
+        compact: bool = True,
+    ) -> list[dict[str, Any]]:
+        messages = await self.read_dm(
+            channel_id,
+            limit=limit,
+            before=before,
+            after=after,
+            around=around,
+        )
+        if compact:
+            return [self._compact_message_dict(message) for message in messages]
+        return messages
+
     async def send_dm(self, channel_id: str, content: str) -> dict[str, Any]:
         await self.start()
         if not self.settings.allow_send:
@@ -233,6 +254,9 @@ class DiscordUserMcpRuntime:
         message = await self.rest.send_message(channel_id, content)
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
+
+    async def send_message(self, channel_id: str, content: str) -> dict[str, Any]:
+        return await self.send_dm(channel_id, content)
 
     async def send_channel_message(self, channel_id: str, content: str) -> dict[str, Any]:
         return await self.send_dm(channel_id, content)
@@ -267,6 +291,14 @@ class DiscordUserMcpRuntime:
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
+    async def reply_to_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        return await self.reply_to_dm_message(channel_id, message_id, content)
+
     async def reply_to_channel_message(
         self,
         channel_id: str,
@@ -294,6 +326,9 @@ class DiscordUserMcpRuntime:
             raise RuntimeError("Deleting is disabled by ALLOW_SEND=false")
         await self.rest.delete_message(channel_id, message_id)
         return {"deleted": True, "channel_id": channel_id, "message_id": message_id}
+
+    async def delete_message(self, channel_id: str, message_id: str) -> dict[str, Any]:
+        return await self.delete_dm_message(channel_id, message_id)
 
     async def add_dm_reaction(
         self,
@@ -364,6 +399,19 @@ class DiscordUserMcpRuntime:
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
+    async def send_attachments(
+        self,
+        channel_id: str,
+        *,
+        attachment_paths: list[str],
+        content: str | None = None,
+    ) -> dict[str, Any]:
+        return await self.send_dm_attachments(
+            channel_id,
+            attachment_paths=attachment_paths,
+            content=content,
+        )
+
     async def send_natural_dm(
         self,
         channel_id: str,
@@ -397,6 +445,23 @@ class DiscordUserMcpRuntime:
         result = self._message_to_dict(message)
         result["typing_seconds"] = typing_seconds
         return result
+
+    async def send_natural_message(
+        self,
+        channel_id: str,
+        content: str,
+        *,
+        wpm: int | None = None,
+        min_seconds: float | None = None,
+        max_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        return await self.send_natural_dm(
+            channel_id,
+            content,
+            wpm=wpm,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
+        )
 
     async def poll_new_dm_events(
         self,
@@ -612,4 +677,14 @@ class DiscordUserMcpRuntime:
             "attachments": message.raw.get("attachments", []),
             "edited_timestamp": message.raw.get("edited_timestamp"),
             "referenced_message_id": (message.raw.get("referenced_message") or {}).get("id"),
+        }
+
+    @staticmethod
+    def _compact_message_dict(message: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "message_id": message["message_id"],
+            "person": message["author_name"] or message["author_id"],
+            "user_id": message["author_id"],
+            "message": message["content"],
+            "time": message["timestamp"],
         }

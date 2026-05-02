@@ -17,27 +17,24 @@ async def test_mcp_registers_expected_tools(tmp_path: Path) -> None:
             "list_dms",
             "list_servers",
             "list_server_channels",
-            "read_dm",
-            "read_channel_messages",
-            "send_dm",
-            "send_channel_message",
-            "reply_to_dm_message",
-            "reply_to_channel_message",
-            "edit_dm_message",
-            "delete_dm_message",
-            "add_dm_reaction",
-            "add_message_reaction",
-            "remove_dm_reaction",
-            "remove_message_reaction",
+            "read_messages",
+            "send_message",
+            "send_natural_message",
+            "reply_to_message",
+            "edit_message",
+            "delete_message",
+            "add_reaction",
+            "remove_reaction",
             "send_typing_indicator",
-            "send_dm_attachments",
-            "send_natural_dm",
+            "send_attachments",
             "poll_new_dm_events",
             "collect_dm_burst",
             "start_dm_watch",
             "poll_active_dm",
             "stop_dm_watch",
         } <= tool_names
+        assert "send_dm" not in tool_names
+        assert "send_channel_message" not in tool_names
     finally:
         runtime.store.close()
 

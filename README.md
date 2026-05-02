@@ -137,25 +137,9 @@ Inputs:
 }
 ```
 
-### `read_dm`
+### `read_messages`
 
-Reads recent messages from a DM channel.
-
-Inputs:
-
-```json
-{
-  "channel_id": "1486088754560106659",
-  "limit": 20,
-  "before": null,
-  "after": null,
-  "around": null
-}
-```
-
-### `read_channel_messages`
-
-Reads recent messages from any channel id, including server text channels.
+Reads recent messages from a DM or server channel. By default this returns compact, token-efficient rows.
 
 Inputs:
 
@@ -165,28 +149,32 @@ Inputs:
   "limit": 20,
   "before": null,
   "after": null,
-  "around": null
+  "around": null,
+  "compact": true
 }
 ```
 
-### `send_dm`
-
-Sends a message to a DM channel. Can be disabled with `ALLOW_SEND=false`.
-
-Inputs:
+Compact output:
 
 ```json
-{
-  "channel_id": "1486088754560106659",
-  "content": "hello"
-}
+[
+  {
+    "message_id": "123456789012345678",
+    "person": "purplecard",
+    "user_id": "887930806524325909",
+    "message": "yo can you check this?",
+    "time": "2026-05-02T01:45:19.152000+00:00"
+  }
+]
 ```
 
-### `send_channel_message`
+Set `compact=false` only when the agent needs attachments, edit timestamps, or reply references.
 
-Sends a message to any channel the user can post in. For server pings, include normal Discord mention syntax in `content`.
+### `send_message`
 
-Inputs:
+Sends a normal message to a DM or server channel. Can be disabled with `ALLOW_SEND=false`.
+
+For server pings, include normal Discord mention syntax in `content`.
 
 ```json
 {
@@ -204,15 +192,15 @@ Channel: <#CHANNEL_ID>
 Everyone/here: @everyone or @here, if Discord allows the account to use them
 ```
 
-### `send_natural_dm`
+### `send_natural_message`
 
-Sends typing indicators for a human-ish duration based on message length and WPM, then sends the DM. Can be disabled with `ALLOW_SEND=false`.
+Sends typing indicators for a human-ish duration based on message length and WPM, then sends the message to a DM or server channel.
 
 Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
+  "channel_id": "123456789012345678",
   "content": "hello, this is typed naturally",
   "wpm": 55,
   "min_seconds": 1.0,
@@ -222,29 +210,9 @@ Inputs:
 
 If the optional timing fields are omitted, the server uses `NATURAL_TYPING_WPM`, `NATURAL_TYPING_MIN_SECONDS`, and `NATURAL_TYPING_MAX_SECONDS`.
 
-### `reply_to_dm_message`
+### `reply_to_message`
 
-Replies to one specific message in a DM channel. Internally, this sends a normal Discord message with a `message_reference`.
-
-Inputs:
-
-```json
-{
-  "channel_id": "1486088754560106659",
-  "message_id": "1499949880163172442",
-  "content": "replying directly to that message"
-}
-```
-
-Typical flow:
-
-```text
-read_dm -> pick message_id -> reply_to_dm_message
-```
-
-### `reply_to_channel_message`
-
-Replies to a specific message in any channel.
+Replies to one specific message in a DM or server channel. Internally, this sends a normal Discord message with a `message_reference`.
 
 Inputs:
 
@@ -252,13 +220,19 @@ Inputs:
 {
   "channel_id": "123456789012345678",
   "message_id": "123456789012345678",
-  "content": "replying in a server channel"
+  "content": "replying directly to that message"
 }
+```
+
+Typical flow:
+
+```text
+read_messages -> pick message_id -> reply_to_message
 ```
 
 ### `send_typing_indicator`
 
-Sends one typing indicator pulse to a DM channel.
+Sends one typing indicator pulse to a DM or server channel.
 
 Inputs:
 
@@ -268,9 +242,9 @@ Inputs:
 }
 ```
 
-### `send_dm_attachments`
+### `send_attachments`
 
-Sends one DM message with one or more local file attachments. File paths are read by the MCP server process.
+Sends one message with one or more local file attachments. File paths are read by the MCP server process.
 
 Inputs:
 
@@ -282,9 +256,9 @@ Inputs:
 }
 ```
 
-### `edit_dm_message`
+### `edit_message`
 
-Edits one of your own messages in a DM channel. Discord will reject edits for messages you do not own.
+Edits one of your own messages. Discord will reject edits for messages you do not own.
 
 Inputs:
 
@@ -296,9 +270,9 @@ Inputs:
 }
 ```
 
-### `delete_dm_message`
+### `delete_message`
 
-Deletes one of your own messages in a DM channel. Discord will reject deletes for messages you do not own.
+Deletes one of your own messages. Discord will reject deletes for messages you do not own.
 
 Inputs:
 
@@ -309,9 +283,9 @@ Inputs:
 }
 ```
 
-### `add_dm_reaction`
+### `add_reaction`
 
-Adds your reaction to a DM message.
+Adds your reaction to a message.
 
 Inputs:
 
@@ -331,23 +305,9 @@ For custom Discord emoji, pass the Discord emoji route shape:
 }
 ```
 
-### `add_message_reaction`
+### `remove_reaction`
 
-Adds your reaction to any message.
-
-Inputs:
-
-```json
-{
-  "channel_id": "123456789012345678",
-  "message_id": "123456789012345678",
-  "emoji": "🔥"
-}
-```
-
-### `remove_dm_reaction`
-
-Removes your own reaction from a DM message.
+Removes your own reaction from a message.
 
 Inputs:
 
@@ -355,20 +315,6 @@ Inputs:
 {
   "channel_id": "1486088754560106659",
   "message_id": "1499949880163172442",
-  "emoji": "🔥"
-}
-```
-
-### `remove_message_reaction`
-
-Removes your reaction from any message.
-
-Inputs:
-
-```json
-{
-  "channel_id": "123456789012345678",
-  "message_id": "123456789012345678",
   "emoji": "🔥"
 }
 ```
@@ -479,32 +425,27 @@ Use the returned channel_id for later tools.
 Read the latest messages:
 
 ```text
-Call read_dm with channel_id and limit.
+Call read_messages with channel_id and limit.
+Keep compact=true unless the agent needs attachments or reply metadata.
 Use message_id from the returned messages for reply/edit/delete/reaction actions.
 ```
 
 Reply to a specific message:
 
 ```text
-Call reply_to_dm_message with channel_id, target message_id, and content.
+Call reply_to_message with channel_id, target message_id, and content.
 ```
 
 React to a message:
 
 ```text
-Call add_dm_reaction with channel_id, message_id, and emoji.
-```
-
-React to a server message:
-
-```text
-Call add_message_reaction with channel_id, message_id, and emoji.
+Call add_reaction with channel_id, message_id, and emoji.
 ```
 
 Remove your reaction:
 
 ```text
-Call remove_dm_reaction with the same channel_id, message_id, and emoji.
+Call remove_reaction with the same channel_id, message_id, and emoji.
 ```
 
 Wait for someone to finish a multi-message DM thought:
@@ -517,25 +458,25 @@ Then respond once to the returned batch.
 Edit your own message:
 
 ```text
-Call edit_dm_message with channel_id, your message_id, and replacement content.
+Call edit_message with channel_id, your message_id, and replacement content.
 ```
 
 Delete your own message:
 
 ```text
-Call delete_dm_message with channel_id and your message_id.
+Call delete_message with channel_id and your message_id.
 ```
 
 Send a human-ish response:
 
 ```text
-Call send_natural_dm. The MCP server handles typing indicators and then sends.
+Call send_natural_message. The MCP server handles typing indicators and then sends.
 ```
 
 Send a file:
 
 ```text
-Call send_dm_attachments with absolute file paths visible to the MCP server.
+Call send_attachments with absolute file paths visible to the MCP server.
 ```
 
 Find and post in a server channel:
@@ -545,13 +486,13 @@ Call list_servers.
 Pick guild_id.
 Call list_server_channels.
 Pick channel_id.
-Call read_channel_messages or send_channel_message.
+Call read_messages or send_message.
 ```
 
 Ping in a server:
 
 ```text
-Use send_channel_message with Discord mention syntax in content, such as <@USER_ID>.
+Use send_message with Discord mention syntax in content, such as <@USER_ID>.
 ```
 
 ## Architecture

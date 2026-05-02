@@ -200,6 +200,17 @@ async def test_list_and_read_dms(tmp_path: Path) -> None:
 
         messages = await runtime.read_dm("dm1", limit=5)
         assert messages[0]["content"] == "new message"
+
+        compact = await runtime.read_messages("dm1", limit=5)
+        assert compact == [
+            {
+                "message_id": "m2",
+                "person": "purplecerd",
+                "user_id": "u1",
+                "message": "new message",
+                "time": "2026-05-01T00:00:00+00:00",
+            }
+        ]
     finally:
         await runtime.close()
 
@@ -301,6 +312,25 @@ async def test_send_natural_dm_types_before_sending(tmp_path: Path) -> None:
         assert sent["content"] == "hello there"
         assert sent["typing_seconds"] == 0
         assert runtime.rest.sent == [("dm1", "hello there")]
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_send_natural_message_works_for_any_channel(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        sent = await runtime.send_natural_message(
+            "chan1",
+            "hello server",
+            wpm=120,
+            min_seconds=0,
+            max_seconds=0,
+        )
+
+        assert sent["content"] == "hello server"
+        assert sent["typing_seconds"] == 0
+        assert runtime.rest.sent == [("chan1", "hello server")]
     finally:
         await runtime.close()
 
