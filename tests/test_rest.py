@@ -100,6 +100,42 @@ async def test_send_message_posts_content() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reply_to_message_posts_message_reference() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert json.loads(request.content) == {
+            "content": "reply body",
+            "message_reference": {
+                "channel_id": "dm1",
+                "message_id": "456",
+                "fail_if_not_exists": True,
+            },
+        }
+        return httpx.Response(
+            200,
+            json={
+                "id": "790",
+                "channel_id": "dm1",
+                "content": "reply body",
+                "timestamp": "2026-05-01T00:00:01+00:00",
+                "author": {"id": "me", "username": "me"},
+                "referenced_message": {"id": "456"},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        message = await client.reply_to_message("dm1", "456", "reply body")
+
+    assert message.id == "790"
+    assert message.raw["referenced_message"]["id"] == "456"
+
+
+@pytest.mark.asyncio
 async def test_edit_delete_and_typing_endpoints() -> None:
     seen: list[tuple[str, str, bytes]] = []
 
@@ -140,6 +176,35 @@ async def test_edit_delete_and_typing_endpoints() -> None:
         ),
         ("DELETE", "/api/v9/channels/dm1/messages/789", b""),
         ("POST", "/api/v9/channels/dm1/typing", b""),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reaction_endpoints_url_encode_emoji() -> None:
+    seen: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, str(request.url)))
+        return httpx.Response(204)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        await client.add_reaction("dm1", "m1", "🔥")
+        await client.remove_own_reaction("dm1", "m1", "custom:123")
+
+    assert seen == [
+        (
+            "PUT",
+            "https://discord.test/api/v9/channels/dm1/messages/m1/reactions/%F0%9F%94%A5/@me",
+        ),
+        (
+            "DELETE",
+            "https://discord.test/api/v9/channels/dm1/messages/m1/reactions/custom%3A123/@me",
+        ),
     ]
 
 

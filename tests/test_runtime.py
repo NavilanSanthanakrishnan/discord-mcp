@@ -25,8 +25,11 @@ class FakeRest:
             )
         ]
         self.sent: list[tuple[str, str]] = []
+        self.replies: list[tuple[str, str, str]] = []
         self.edited: list[tuple[str, str, str]] = []
         self.deleted: list[tuple[str, str]] = []
+        self.added_reactions: list[tuple[str, str, str]] = []
+        self.removed_reactions: list[tuple[str, str, str]] = []
         self.typing_channel_ids: list[str] = []
         self.attachment_sends: list[tuple[str, list[str], str | None]] = []
         self.closed = False
@@ -74,6 +77,26 @@ class FakeRest:
             raw={"id": "m3"},
         )
 
+    async def reply_to_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage:
+        self.replies.append((channel_id, message_id, content))
+        return DiscordMessage(
+            id="m-reply",
+            channel_id=channel_id,
+            author_id="me",
+            author_name="me",
+            content=content,
+            timestamp=datetime(2026, 5, 1, 0, 0, 1, tzinfo=UTC),
+            raw={
+                "id": "m-reply",
+                "referenced_message": {"id": message_id},
+            },
+        )
+
     async def edit_message(
         self,
         channel_id: str,
@@ -93,6 +116,12 @@ class FakeRest:
 
     async def delete_message(self, channel_id: str, message_id: str) -> None:
         self.deleted.append((channel_id, message_id))
+
+    async def add_reaction(self, channel_id: str, message_id: str, emoji: str) -> None:
+        self.added_reactions.append((channel_id, message_id, emoji))
+
+    async def remove_own_reaction(self, channel_id: str, message_id: str, emoji: str) -> None:
+        self.removed_reactions.append((channel_id, message_id, emoji))
 
     async def send_typing_indicator(self, channel_id: str) -> None:
         self.typing_channel_ids.append(channel_id)
@@ -165,6 +194,11 @@ async def test_send_dm_can_be_disabled(tmp_path: Path) -> None:
 async def test_edit_delete_typing_and_attachments(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     try:
+        reply = await runtime.reply_to_dm_message("dm1", "m2", "replying here")
+        assert reply["content"] == "replying here"
+        assert reply["referenced_message_id"] == "m2"
+        assert runtime.rest.replies == [("dm1", "m2", "replying here")]
+
         edited = await runtime.edit_dm_message("dm1", "m3", "fixed")
         assert edited["content"] == "fixed"
         assert runtime.rest.edited == [("dm1", "m3", "fixed")]
@@ -172,6 +206,24 @@ async def test_edit_delete_typing_and_attachments(tmp_path: Path) -> None:
         deleted = await runtime.delete_dm_message("dm1", "m3")
         assert deleted == {"deleted": True, "channel_id": "dm1", "message_id": "m3"}
         assert runtime.rest.deleted == [("dm1", "m3")]
+
+        reaction = await runtime.add_dm_reaction("dm1", "m2", "🔥")
+        assert reaction == {
+            "reacted": True,
+            "channel_id": "dm1",
+            "message_id": "m2",
+            "emoji": "🔥",
+        }
+        assert runtime.rest.added_reactions == [("dm1", "m2", "🔥")]
+
+        removed = await runtime.remove_dm_reaction("dm1", "m2", "🔥")
+        assert removed == {
+            "removed": True,
+            "channel_id": "dm1",
+            "message_id": "m2",
+            "emoji": "🔥",
+        }
+        assert runtime.rest.removed_reactions == [("dm1", "m2", "🔥")]
 
         typing = await runtime.send_typing_indicator("dm1")
         assert typing == {"typing": True, "channel_id": "dm1"}

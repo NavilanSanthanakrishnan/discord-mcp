@@ -7,7 +7,9 @@ This project is currently focused on **DMs only**:
 - list DM channels
 - read recent DM messages
 - send a DM message
+- reply to a specific DM message
 - edit/delete your own DM messages
+- add/remove your own reactions on DM messages
 - send local file attachments
 - send typing indicators and natural typed messages
 - keep a singleton Discord Gateway websocket open
@@ -151,6 +153,26 @@ Inputs:
 
 If the optional timing fields are omitted, the server uses `NATURAL_TYPING_WPM`, `NATURAL_TYPING_MIN_SECONDS`, and `NATURAL_TYPING_MAX_SECONDS`.
 
+### `reply_to_dm_message`
+
+Replies to one specific message in a DM channel. Internally, this sends a normal Discord message with a `message_reference`.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "message_id": "1499949880163172442",
+  "content": "replying directly to that message"
+}
+```
+
+Typical flow:
+
+```text
+read_dm -> pick message_id -> reply_to_dm_message
+```
+
 ### `send_typing_indicator`
 
 Sends one typing indicator pulse to a DM channel.
@@ -201,6 +223,42 @@ Inputs:
 {
   "channel_id": "1486088754560106659",
   "message_id": "1499949880163172442"
+}
+```
+
+### `add_dm_reaction`
+
+Adds your reaction to a DM message.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "message_id": "1499949880163172442",
+  "emoji": "🔥"
+}
+```
+
+For custom Discord emoji, pass the Discord emoji route shape:
+
+```json
+{
+  "emoji": "emoji_name:123456789012345678"
+}
+```
+
+### `remove_dm_reaction`
+
+Removes your own reaction from a DM message.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "message_id": "1499949880163172442",
+  "emoji": "🔥"
 }
 ```
 
@@ -258,6 +316,64 @@ uv run python examples/poll_new_dms.py
 ```
 
 That script calls `poll_new_dm_events`, stores a local cursor in `.local/poll_new_dms_cursor.json`, and prints compact notification JSON for new DM events.
+
+## Common Agent Instructions
+
+Find a DM with a person:
+
+```text
+Call list_dms with query set to the person's username/display name.
+Use the returned channel_id for later tools.
+```
+
+Read the latest messages:
+
+```text
+Call read_dm with channel_id and limit.
+Use message_id from the returned messages for reply/edit/delete/reaction actions.
+```
+
+Reply to a specific message:
+
+```text
+Call reply_to_dm_message with channel_id, target message_id, and content.
+```
+
+React to a message:
+
+```text
+Call add_dm_reaction with channel_id, message_id, and emoji.
+```
+
+Remove your reaction:
+
+```text
+Call remove_dm_reaction with the same channel_id, message_id, and emoji.
+```
+
+Edit your own message:
+
+```text
+Call edit_dm_message with channel_id, your message_id, and replacement content.
+```
+
+Delete your own message:
+
+```text
+Call delete_dm_message with channel_id and your message_id.
+```
+
+Send a human-ish response:
+
+```text
+Call send_natural_dm. The MCP server handles typing indicators and then sends.
+```
+
+Send a file:
+
+```text
+Call send_dm_attachments with absolute file paths visible to the MCP server.
+```
 
 ## Architecture
 

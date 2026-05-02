@@ -71,6 +71,13 @@ def create_mcp(
     async def send_dm(channel_id: str, content: str) -> dict:
         return await runtime.send_dm(channel_id, content)
 
+    @mcp.tool(
+        name="reply_to_dm_message",
+        description="Reply to a specific message in a DM channel.",
+    )
+    async def reply_to_dm_message(channel_id: str, message_id: str, content: str) -> dict:
+        return await runtime.reply_to_dm_message(channel_id, message_id, content)
+
     @mcp.tool(name="edit_dm_message", description="Edit one of your messages in a DM channel.")
     async def edit_dm_message(channel_id: str, message_id: str, content: str) -> dict:
         return await runtime.edit_dm_message(channel_id, message_id, content)
@@ -78,6 +85,14 @@ def create_mcp(
     @mcp.tool(name="delete_dm_message", description="Delete one of your messages in a DM channel.")
     async def delete_dm_message(channel_id: str, message_id: str) -> dict:
         return await runtime.delete_dm_message(channel_id, message_id)
+
+    @mcp.tool(name="add_dm_reaction", description="Add a reaction to a DM message.")
+    async def add_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.add_dm_reaction(channel_id, message_id, emoji)
+
+    @mcp.tool(name="remove_dm_reaction", description="Remove your reaction from a DM message.")
+    async def remove_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.remove_dm_reaction(channel_id, message_id, emoji)
 
     @mcp.tool(
         name="send_typing_indicator",

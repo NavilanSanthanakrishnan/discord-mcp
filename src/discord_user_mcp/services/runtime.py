@@ -31,6 +31,13 @@ class RestClientProtocol(Protocol):
 
     async def send_message(self, channel_id: str, content: str) -> DiscordMessage: ...
 
+    async def reply_to_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage: ...
+
     async def edit_message(
         self,
         channel_id: str,
@@ -39,6 +46,10 @@ class RestClientProtocol(Protocol):
     ) -> DiscordMessage: ...
 
     async def delete_message(self, channel_id: str, message_id: str) -> None: ...
+
+    async def add_reaction(self, channel_id: str, message_id: str, emoji: str) -> None: ...
+
+    async def remove_own_reaction(self, channel_id: str, message_id: str, emoji: str) -> None: ...
 
     async def send_typing_indicator(self, channel_id: str) -> None: ...
 
@@ -170,6 +181,19 @@ class DiscordUserMcpRuntime:
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
+    async def reply_to_dm_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        await self.start()
+        if not self.settings.allow_send:
+            raise RuntimeError("Sending is disabled by ALLOW_SEND=false")
+        message = await self.rest.reply_to_message(channel_id, message_id, content)
+        self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
+        return self._message_to_dict(message)
+
     async def edit_dm_message(
         self,
         channel_id: str,
@@ -189,6 +213,36 @@ class DiscordUserMcpRuntime:
             raise RuntimeError("Deleting is disabled by ALLOW_SEND=false")
         await self.rest.delete_message(channel_id, message_id)
         return {"deleted": True, "channel_id": channel_id, "message_id": message_id}
+
+    async def add_dm_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        await self.start()
+        await self.rest.add_reaction(channel_id, message_id, emoji)
+        return {
+            "reacted": True,
+            "channel_id": channel_id,
+            "message_id": message_id,
+            "emoji": emoji,
+        }
+
+    async def remove_dm_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        await self.start()
+        await self.rest.remove_own_reaction(channel_id, message_id, emoji)
+        return {
+            "removed": True,
+            "channel_id": channel_id,
+            "message_id": message_id,
+            "emoji": emoji,
+        }
 
     async def send_typing_indicator(self, channel_id: str) -> dict[str, Any]:
         await self.start()
@@ -367,4 +421,5 @@ class DiscordUserMcpRuntime:
             "timestamp": message.timestamp.isoformat(),
             "attachments": message.raw.get("attachments", []),
             "edited_timestamp": message.raw.get("edited_timestamp"),
+            "referenced_message_id": (message.raw.get("referenced_message") or {}).get("id"),
         }

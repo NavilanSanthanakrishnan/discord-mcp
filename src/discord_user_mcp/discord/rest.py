@@ -5,6 +5,7 @@ import mimetypes
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -144,6 +145,28 @@ class DiscordRestClient:
         )
         return DiscordMessage.from_discord(payload)
 
+    async def reply_to_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage:
+        if not content.strip():
+            raise ValueError("content must not be blank")
+        payload = await self._request_json(
+            "POST",
+            f"channels/{channel_id}/messages",
+            json_body={
+                "content": content,
+                "message_reference": {
+                    "channel_id": channel_id,
+                    "message_id": message_id,
+                    "fail_if_not_exists": True,
+                },
+            },
+        )
+        return DiscordMessage.from_discord(payload)
+
     async def edit_message(
         self,
         channel_id: str,
@@ -161,6 +184,20 @@ class DiscordRestClient:
 
     async def delete_message(self, channel_id: str, message_id: str) -> None:
         await self._request_json("DELETE", f"channels/{channel_id}/messages/{message_id}")
+
+    async def add_reaction(self, channel_id: str, message_id: str, emoji: str) -> None:
+        encoded_emoji = quote(emoji, safe="")
+        await self._request_json(
+            "PUT",
+            f"channels/{channel_id}/messages/{message_id}/reactions/{encoded_emoji}/@me",
+        )
+
+    async def remove_own_reaction(self, channel_id: str, message_id: str, emoji: str) -> None:
+        encoded_emoji = quote(emoji, safe="")
+        await self._request_json(
+            "DELETE",
+            f"channels/{channel_id}/messages/{message_id}/reactions/{encoded_emoji}/@me",
+        )
 
     async def send_typing_indicator(self, channel_id: str) -> None:
         await self._request_json("POST", f"channels/{channel_id}/typing")
