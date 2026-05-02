@@ -136,6 +136,8 @@ class DiscordGatewayWatcher:
             self._handle_channel_create(data)
         elif event_type == "MESSAGE_CREATE":
             self._handle_message_create(data)
+        elif event_type == "TYPING_START":
+            self._handle_typing_start(data)
 
     def _handle_ready(self, data: dict[str, Any]) -> None:
         self.status.current_user_id = data.get("user", {}).get("id")
@@ -178,6 +180,29 @@ class DiscordGatewayWatcher:
             message_id=message.id,
             payload={
                 "message": message.model_dump(mode="json"),
+                "raw": data,
+            },
+        )
+
+    def _handle_typing_start(self, data: dict[str, Any]) -> None:
+        channel_id = data.get("channel_id")
+        user_id = data.get("user_id")
+        if not channel_id or not user_id:
+            return
+        if user_id == self.status.current_user_id:
+            return
+
+        is_dm = channel_id in self._dm_channel_ids or not data.get("guild_id")
+        if not is_dm:
+            return
+
+        self.store.add_event(
+            "dm_typing_start",
+            channel_id=channel_id,
+            message_id=None,
+            payload={
+                "user_id": user_id,
+                "timestamp": data.get("timestamp"),
                 "raw": data,
             },
         )

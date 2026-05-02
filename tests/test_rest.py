@@ -72,6 +72,58 @@ async def test_read_messages_builds_cursor_query() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_guilds_and_server_channels() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/users/@me/guilds"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": "guild1",
+                        "name": "Test Server",
+                        "icon": None,
+                        "owner": False,
+                        "permissions": "123",
+                    }
+                ],
+            )
+        assert request.url.path.endswith("/guilds/guild1/channels")
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "id": "chan1",
+                    "guild_id": "guild1",
+                    "type": 0,
+                    "name": "general",
+                    "position": 1,
+                    "topic": "hello",
+                },
+                {
+                    "id": "voice1",
+                    "guild_id": "guild1",
+                    "type": 2,
+                    "name": "voice",
+                },
+            ],
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        guilds = await client.list_guilds()
+        channels = await client.list_guild_channels("guild1")
+
+    assert guilds[0].id == "guild1"
+    assert guilds[0].name == "Test Server"
+    assert [channel.id for channel in channels] == ["chan1"]
+    assert channels[0].topic == "hello"
+
+
+@pytest.mark.asyncio
 async def test_send_message_posts_content() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "POST"

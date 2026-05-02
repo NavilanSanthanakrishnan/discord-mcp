@@ -8,7 +8,13 @@ import pytest
 
 from discord_user_mcp.config import Settings
 from discord_user_mcp.discord.gateway import DiscordGatewayWatcher
-from discord_user_mcp.discord.models import DiscordMessage, DiscordUser, DMChannel
+from discord_user_mcp.discord.models import (
+    DiscordChannel,
+    DiscordGuild,
+    DiscordMessage,
+    DiscordUser,
+    DMChannel,
+)
 from discord_user_mcp.services.runtime import DiscordUserMcpRuntime
 from discord_user_mcp.storage.db import DiscordStore
 
@@ -22,6 +28,18 @@ class FakeRest:
                 name="purplecerd",
                 recipients=[DiscordUser(id="u1", username="purplecerd")],
                 last_message_id="m2",
+            )
+        ]
+        self.guilds = [
+            DiscordGuild(id="guild1", name="Test Server", owner=False, permissions="123")
+        ]
+        self.guild_channels = [
+            DiscordChannel(
+                id="chan1",
+                type=0,
+                name="general",
+                guild_id="guild1",
+                position=1,
             )
         ]
         self.sent: list[tuple[str, str]] = []
@@ -43,6 +61,12 @@ class FakeRest:
 
     async def list_dm_channels(self) -> list[DMChannel]:
         return self.channels
+
+    async def list_guilds(self) -> list[DiscordGuild]:
+        return self.guilds
+
+    async def list_guild_channels(self, guild_id: str) -> list[DiscordChannel]:
+        return [channel for channel in self.guild_channels if channel.guild_id == guild_id]
 
     async def read_messages(
         self,
@@ -181,6 +205,28 @@ async def test_list_and_read_dms(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_servers_and_server_channels(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        servers = await runtime.list_servers(query="test")
+        assert servers == [
+            {
+                "guild_id": "guild1",
+                "name": "Test Server",
+                "icon": None,
+                "owner": False,
+                "permissions": "123",
+            }
+        ]
+
+        channels = await runtime.list_server_channels("guild1", query="general")
+        assert channels[0]["channel_id"] == "chan1"
+        assert channels[0]["guild_id"] == "guild1"
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
 async def test_send_dm_can_be_disabled(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path, allow_send=False)
     try:
@@ -295,5 +341,44 @@ async def test_active_watch_polls_incrementally(tmp_path: Path) -> None:
 
         second = await runtime.poll_active_dm()
         assert second["events"] == []
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_collect_dm_burst_waits_for_quiet_period(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        runtime.store.add_event(
+            "dm_typing_start",
+            channel_id="dm1",
+            message_id=None,
+            payload={"user_id": "u1"},
+        )
+        runtime.store.add_event(
+            "dm_message_create",
+            channel_id="dm1",
+            message_id="m1",
+            payload={"message": {"content": "first"}},
+        )
+        runtime.store.add_event(
+            "dm_message_create",
+            channel_id="dm1",
+            message_id="m2",
+            payload={"message": {"content": "second"}},
+        )
+
+        burst = await runtime.collect_dm_burst(
+            "dm1",
+            quiet_seconds=0,
+            max_wait_seconds=0,
+            max_events=10,
+            typing_ttl_seconds=0,
+        )
+
+        assert burst["ended_reason"] in {"quiet_period", "max_wait"}
+        assert burst["typing_observed"] is True
+        assert [event["message_id"] for event in burst["events"]] == ["m1", "m2"]
+        assert burst["last_event_id"] == 3
     finally:
         await runtime.close()

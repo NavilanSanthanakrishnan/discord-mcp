@@ -117,3 +117,40 @@ async def test_message_create_from_self_is_stored_but_not_evented(tmp_path) -> N
         assert store.list_events() == []
     finally:
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_typing_start_from_dm_adds_event(tmp_path) -> None:
+    store = DiscordStore(tmp_path / "state.sqlite")
+    try:
+        watcher = DiscordGatewayWatcher("token", store)
+        await watcher.handle_payload(
+            {
+                "op": 0,
+                "s": 1,
+                "t": "READY",
+                "d": {
+                    "user": {"id": "me"},
+                    "private_channels": [{"id": "dm1", "type": 1, "recipients": []}],
+                },
+            }
+        )
+        await watcher.handle_payload(
+            {
+                "op": 0,
+                "s": 2,
+                "t": "TYPING_START",
+                "d": {
+                    "channel_id": "dm1",
+                    "user_id": "u1",
+                    "timestamp": 1770000000,
+                },
+            }
+        )
+
+        events = store.list_events()
+        assert len(events) == 1
+        assert events[0]["event_type"] == "dm_typing_start"
+        assert events[0]["payload"]["user_id"] == "u1"
+    finally:
+        store.close()

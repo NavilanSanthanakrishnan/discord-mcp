@@ -9,7 +9,14 @@ from urllib.parse import quote
 
 import httpx
 
-from discord_user_mcp.discord.models import DM_CHANNEL_TYPES, DiscordMessage, DMChannel
+from discord_user_mcp.discord.models import (
+    DM_CHANNEL_TYPES,
+    GUILD_TEXT_CHANNEL_TYPES,
+    DiscordChannel,
+    DiscordGuild,
+    DiscordMessage,
+    DMChannel,
+)
 
 
 class DiscordRestError(RuntimeError):
@@ -111,6 +118,18 @@ class DiscordRestClient:
             DMChannel.from_discord(channel)
             for channel in payload
             if channel.get("type") in DM_CHANNEL_TYPES
+        ]
+
+    async def list_guilds(self) -> list[DiscordGuild]:
+        payload = await self._request_json("GET", "users/@me/guilds")
+        return [DiscordGuild.from_discord(guild) for guild in payload]
+
+    async def list_guild_channels(self, guild_id: str) -> list[DiscordChannel]:
+        payload = await self._request_json("GET", f"guilds/{guild_id}/channels")
+        return [
+            DiscordChannel.from_discord(channel)
+            for channel in payload
+            if channel.get("type") in GUILD_TEXT_CHANNEL_TYPES
         ]
 
     async def read_messages(

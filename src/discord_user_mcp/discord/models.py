@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 DISCORD_EPOCH_MS = 1420070400000
 DM_CHANNEL_TYPES = {1, 3}
+GUILD_TEXT_CHANNEL_TYPES = {0, 5, 10, 11, 12, 15, 16}
 
 
 def snowflake_to_datetime(snowflake: str) -> datetime:
@@ -50,6 +51,50 @@ class DMChannel(BaseModel):
         )
 
 
+class DiscordGuild(BaseModel):
+    id: str
+    name: str
+    icon: str | None = None
+    owner: bool | None = None
+    permissions: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_discord(cls, payload: dict[str, Any]) -> DiscordGuild:
+        return cls(
+            id=payload["id"],
+            name=payload.get("name") or payload["id"],
+            icon=payload.get("icon"),
+            owner=payload.get("owner"),
+            permissions=payload.get("permissions"),
+            raw=payload,
+        )
+
+
+class DiscordChannel(BaseModel):
+    id: str
+    type: int
+    name: str
+    guild_id: str | None = None
+    parent_id: str | None = None
+    position: int | None = None
+    topic: str | None = None
+    last_message_id: str | None = None
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_discord(cls, payload: dict[str, Any]) -> DiscordChannel:
+        return cls(
+            id=payload["id"],
+            type=payload["type"],
+            name=payload.get("name") or payload["id"],
+            guild_id=payload.get("guild_id"),
+            parent_id=payload.get("parent_id"),
+            position=payload.get("position"),
+            topic=payload.get("topic"),
+            last_message_id=payload.get("last_message_id"),
+            raw=payload,
+        )
 class DiscordMessage(BaseModel):
     id: str
     channel_id: str

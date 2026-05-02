@@ -1,8 +1,8 @@
-# Discord User DM MCP
+# Discord User Discord MCP
 
-Local MCP server for user-authenticated Discord direct messages.
+Local MCP server for user-authenticated Discord direct messages and server text channels.
 
-This project is currently focused on **DMs only**:
+This project currently supports:
 
 - list DM channels
 - read recent DM messages
@@ -13,9 +13,13 @@ This project is currently focused on **DMs only**:
 - send local file attachments
 - send typing indicators and natural typed messages
 - keep a singleton Discord Gateway websocket open
-- capture incoming DM `MESSAGE_CREATE` events
+- capture incoming DM `MESSAGE_CREATE` and `TYPING_START` events
 - poll new DM events through MCP tools
+- collect a natural DM burst after the sender pauses
 - focus an active watch on one DM conversation with an idle timeout
+- list servers/guilds
+- list server text-like channels
+- read/send/reply/react in server channels
 
 > Important: this project uses a Discord user session token from a local file. Treat that token like a password. Keep it local, never commit it, and understand that automating user accounts can violate Discord's terms of service.
 
@@ -106,6 +110,33 @@ Inputs:
 }
 ```
 
+### `list_servers`
+
+Lists Discord servers/guilds visible to the user session.
+
+Inputs:
+
+```json
+{
+  "limit": 100,
+  "query": "server name"
+}
+```
+
+### `list_server_channels`
+
+Lists text-like channels for a server/guild.
+
+Inputs:
+
+```json
+{
+  "guild_id": "123456789012345678",
+  "limit": 100,
+  "query": "general"
+}
+```
+
 ### `read_dm`
 
 Reads recent messages from a DM channel.
@@ -115,6 +146,22 @@ Inputs:
 ```json
 {
   "channel_id": "1486088754560106659",
+  "limit": 20,
+  "before": null,
+  "after": null,
+  "around": null
+}
+```
+
+### `read_channel_messages`
+
+Reads recent messages from any channel id, including server text channels.
+
+Inputs:
+
+```json
+{
+  "channel_id": "123456789012345678",
   "limit": 20,
   "before": null,
   "after": null,
@@ -133,6 +180,28 @@ Inputs:
   "channel_id": "1486088754560106659",
   "content": "hello"
 }
+```
+
+### `send_channel_message`
+
+Sends a message to any channel the user can post in. For server pings, include normal Discord mention syntax in `content`.
+
+Inputs:
+
+```json
+{
+  "channel_id": "123456789012345678",
+  "content": "hello <@123456789012345678>"
+}
+```
+
+Mention forms:
+
+```text
+User: <@USER_ID>
+Role: <@&ROLE_ID>
+Channel: <#CHANNEL_ID>
+Everyone/here: @everyone or @here, if Discord allows the account to use them
 ```
 
 ### `send_natural_dm`
@@ -171,6 +240,20 @@ Typical flow:
 
 ```text
 read_dm -> pick message_id -> reply_to_dm_message
+```
+
+### `reply_to_channel_message`
+
+Replies to a specific message in any channel.
+
+Inputs:
+
+```json
+{
+  "channel_id": "123456789012345678",
+  "message_id": "123456789012345678",
+  "content": "replying in a server channel"
+}
 ```
 
 ### `send_typing_indicator`
@@ -248,6 +331,20 @@ For custom Discord emoji, pass the Discord emoji route shape:
 }
 ```
 
+### `add_message_reaction`
+
+Adds your reaction to any message.
+
+Inputs:
+
+```json
+{
+  "channel_id": "123456789012345678",
+  "message_id": "123456789012345678",
+  "emoji": "🔥"
+}
+```
+
 ### `remove_dm_reaction`
 
 Removes your own reaction from a DM message.
@@ -258,6 +355,20 @@ Inputs:
 {
   "channel_id": "1486088754560106659",
   "message_id": "1499949880163172442",
+  "emoji": "🔥"
+}
+```
+
+### `remove_message_reaction`
+
+Removes your reaction from any message.
+
+Inputs:
+
+```json
+{
+  "channel_id": "123456789012345678",
+  "message_id": "123456789012345678",
   "emoji": "🔥"
 }
 ```
@@ -273,6 +384,45 @@ Inputs:
   "after_event_id": 0,
   "limit": 20,
   "channel_id": null
+}
+```
+
+### `collect_dm_burst`
+
+Waits for a DM sender to pause, then returns the batch of new incoming messages. This is the natural-response primitive for avoiding one reply per tiny message.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "after_event_id": 0,
+  "quiet_seconds": 5,
+  "max_wait_seconds": 30,
+  "max_events": 20,
+  "respect_typing": true,
+  "typing_ttl_seconds": 8
+}
+```
+
+Behavior:
+
+```text
+Wait until at least one new DM message arrives.
+If more messages arrive, keep extending the quiet timer.
+If Discord TYPING_START arrives and respect_typing=true, keep waiting briefly.
+Return once quiet_seconds passes, max_wait_seconds is reached, or max_events is reached.
+```
+
+Returns:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "events": [],
+  "last_event_id": 123,
+  "ended_reason": "quiet_period",
+  "typing_observed": true
 }
 ```
 
@@ -345,10 +495,23 @@ React to a message:
 Call add_dm_reaction with channel_id, message_id, and emoji.
 ```
 
+React to a server message:
+
+```text
+Call add_message_reaction with channel_id, message_id, and emoji.
+```
+
 Remove your reaction:
 
 ```text
 Call remove_dm_reaction with the same channel_id, message_id, and emoji.
+```
+
+Wait for someone to finish a multi-message DM thought:
+
+```text
+Call collect_dm_burst with quiet_seconds around 3-8 seconds.
+Then respond once to the returned batch.
 ```
 
 Edit your own message:
@@ -373,6 +536,22 @@ Send a file:
 
 ```text
 Call send_dm_attachments with absolute file paths visible to the MCP server.
+```
+
+Find and post in a server channel:
+
+```text
+Call list_servers.
+Pick guild_id.
+Call list_server_channels.
+Pick channel_id.
+Call read_channel_messages or send_channel_message.
+```
+
+Ping in a server:
+
+```text
+Use send_channel_message with Discord mention syntax in content, such as <@USER_ID>.
 ```
 
 ## Architecture

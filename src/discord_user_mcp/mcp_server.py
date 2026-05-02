@@ -51,6 +51,24 @@ def create_mcp(
     ) -> list[dict]:
         return await runtime.list_dms(limit=limit, query=query, refresh=refresh)
 
+    @mcp.tool(
+        name="list_servers",
+        description="List Discord servers/guilds visible to the user session.",
+    )
+    async def list_servers(limit: int = 100, query: str | None = None) -> list[dict]:
+        return await runtime.list_servers(limit=limit, query=query)
+
+    @mcp.tool(
+        name="list_server_channels",
+        description="List text-like channels for a Discord server/guild.",
+    )
+    async def list_server_channels(
+        guild_id: str,
+        limit: int = 100,
+        query: str | None = None,
+    ) -> list[dict]:
+        return await runtime.list_server_channels(guild_id, limit=limit, query=query)
+
     @mcp.tool(name="read_dm", description="Read recent messages from a DM channel.")
     async def read_dm(
         channel_id: str,
@@ -67,9 +85,32 @@ def create_mcp(
             around=around,
         )
 
+    @mcp.tool(name="read_channel_messages", description="Read recent messages from any channel.")
+    async def read_channel_messages(
+        channel_id: str,
+        limit: int = 20,
+        before: str | None = None,
+        after: str | None = None,
+        around: str | None = None,
+    ) -> list[dict]:
+        return await runtime.read_channel_messages(
+            channel_id,
+            limit=limit,
+            before=before,
+            after=after,
+            around=around,
+        )
+
     @mcp.tool(name="send_dm", description="Send a message to a DM channel.")
     async def send_dm(channel_id: str, content: str) -> dict:
         return await runtime.send_dm(channel_id, content)
+
+    @mcp.tool(
+        name="send_channel_message",
+        description="Send a message to any channel the user can post in.",
+    )
+    async def send_channel_message(channel_id: str, content: str) -> dict:
+        return await runtime.send_channel_message(channel_id, content)
 
     @mcp.tool(
         name="reply_to_dm_message",
@@ -77,6 +118,13 @@ def create_mcp(
     )
     async def reply_to_dm_message(channel_id: str, message_id: str, content: str) -> dict:
         return await runtime.reply_to_dm_message(channel_id, message_id, content)
+
+    @mcp.tool(
+        name="reply_to_channel_message",
+        description="Reply to a specific message in any channel.",
+    )
+    async def reply_to_channel_message(channel_id: str, message_id: str, content: str) -> dict:
+        return await runtime.reply_to_channel_message(channel_id, message_id, content)
 
     @mcp.tool(name="edit_dm_message", description="Edit one of your messages in a DM channel.")
     async def edit_dm_message(channel_id: str, message_id: str, content: str) -> dict:
@@ -90,9 +138,17 @@ def create_mcp(
     async def add_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
         return await runtime.add_dm_reaction(channel_id, message_id, emoji)
 
+    @mcp.tool(name="add_message_reaction", description="Add a reaction to any message.")
+    async def add_message_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.add_message_reaction(channel_id, message_id, emoji)
+
     @mcp.tool(name="remove_dm_reaction", description="Remove your reaction from a DM message.")
     async def remove_dm_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
         return await runtime.remove_dm_reaction(channel_id, message_id, emoji)
+
+    @mcp.tool(name="remove_message_reaction", description="Remove your reaction from any message.")
+    async def remove_message_reaction(channel_id: str, message_id: str, emoji: str) -> dict:
+        return await runtime.remove_message_reaction(channel_id, message_id, emoji)
 
     @mcp.tool(
         name="send_typing_indicator",
@@ -147,6 +203,29 @@ def create_mcp(
             after_event_id=after_event_id,
             limit=limit,
             channel_id=channel_id,
+        )
+
+    @mcp.tool(
+        name="collect_dm_burst",
+        description="Wait for a DM sender to pause, then return the batch of new messages.",
+    )
+    async def collect_dm_burst(
+        channel_id: str,
+        after_event_id: int = 0,
+        quiet_seconds: float = 5,
+        max_wait_seconds: float = 30,
+        max_events: int = 20,
+        respect_typing: bool = True,
+        typing_ttl_seconds: float = 8,
+    ) -> dict:
+        return await runtime.collect_dm_burst(
+            channel_id,
+            after_event_id=after_event_id,
+            quiet_seconds=quiet_seconds,
+            max_wait_seconds=max_wait_seconds,
+            max_events=max_events,
+            respect_typing=respect_typing,
+            typing_ttl_seconds=typing_ttl_seconds,
         )
 
     @mcp.tool(

@@ -7,7 +7,12 @@ from typing import Any, Protocol
 
 from discord_user_mcp.config import Settings
 from discord_user_mcp.discord.gateway import DiscordGatewayWatcher
-from discord_user_mcp.discord.models import DiscordMessage, DMChannel
+from discord_user_mcp.discord.models import (
+    DiscordChannel,
+    DiscordGuild,
+    DiscordMessage,
+    DMChannel,
+)
 from discord_user_mcp.discord.rest import DiscordRestClient
 from discord_user_mcp.storage.db import DiscordStore
 
@@ -18,6 +23,10 @@ class RestClientProtocol(Protocol):
     async def get_current_user(self) -> dict[str, Any]: ...
 
     async def list_dm_channels(self) -> list[DMChannel]: ...
+
+    async def list_guilds(self) -> list[DiscordGuild]: ...
+
+    async def list_guild_channels(self, guild_id: str) -> list[DiscordChannel]: ...
 
     async def read_messages(
         self,
@@ -124,7 +133,7 @@ class DiscordUserMcpRuntime:
         await self.start()
         channels = await self.rest.list_dm_channels()
         self.store.upsert_dm_channels(channels)
-        return [self._channel_to_dict(channel) for channel in channels]
+        return [self._dm_channel_to_dict(channel) for channel in channels]
 
     async def list_dms(
         self,
@@ -150,6 +159,50 @@ class DiscordUserMcpRuntime:
             channels,
             key=lambda channel: channel.get("last_message_id") or "0",
             reverse=True,
+        )[:limit]
+
+    async def list_servers(
+        self,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
+        await self.start()
+        guilds = [self._guild_to_dict(guild) for guild in await self.rest.list_guilds()]
+        if query:
+            needle = query.casefold()
+            guilds = [
+                guild
+                for guild in guilds
+                if needle in guild["name"].casefold() or needle in guild["guild_id"]
+            ]
+        return sorted(guilds, key=lambda guild: guild["name"].casefold())[:limit]
+
+    async def list_server_channels(
+        self,
+        guild_id: str,
+        *,
+        limit: int = 100,
+        query: str | None = None,
+    ) -> list[dict[str, Any]]:
+        await self.start()
+        channels = [
+            self._server_channel_to_dict(channel)
+            for channel in await self.rest.list_guild_channels(guild_id)
+        ]
+        if query:
+            needle = query.casefold()
+            channels = [
+                channel
+                for channel in channels
+                if needle in channel["name"].casefold() or needle in channel["channel_id"]
+            ]
+        return sorted(
+            channels,
+            key=lambda channel: (
+                channel["position"] if channel["position"] is not None else 999999,
+                channel["name"].casefold(),
+            ),
         )[:limit]
 
     async def read_dm(
@@ -181,6 +234,26 @@ class DiscordUserMcpRuntime:
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
+    async def send_channel_message(self, channel_id: str, content: str) -> dict[str, Any]:
+        return await self.send_dm(channel_id, content)
+
+    async def read_channel_messages(
+        self,
+        channel_id: str,
+        *,
+        limit: int = 20,
+        before: str | None = None,
+        after: str | None = None,
+        around: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return await self.read_dm(
+            channel_id,
+            limit=limit,
+            before=before,
+            after=after,
+            around=around,
+        )
+
     async def reply_to_dm_message(
         self,
         channel_id: str,
@@ -193,6 +266,14 @@ class DiscordUserMcpRuntime:
         message = await self.rest.reply_to_message(channel_id, message_id, content)
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
+
+    async def reply_to_channel_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        return await self.reply_to_dm_message(channel_id, message_id, content)
 
     async def edit_dm_message(
         self,
@@ -229,6 +310,14 @@ class DiscordUserMcpRuntime:
             "emoji": emoji,
         }
 
+    async def add_message_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        return await self.add_dm_reaction(channel_id, message_id, emoji)
+
     async def remove_dm_reaction(
         self,
         channel_id: str,
@@ -243,6 +332,14 @@ class DiscordUserMcpRuntime:
             "message_id": message_id,
             "emoji": emoji,
         }
+
+    async def remove_message_reaction(
+        self,
+        channel_id: str,
+        message_id: str,
+        emoji: str,
+    ) -> dict[str, Any]:
+        return await self.remove_dm_reaction(channel_id, message_id, emoji)
 
     async def send_typing_indicator(self, channel_id: str) -> dict[str, Any]:
         await self.start()
@@ -369,6 +466,76 @@ class DiscordUserMcpRuntime:
 
         return {"active": True, **active, "events": events}
 
+    async def collect_dm_burst(
+        self,
+        channel_id: str,
+        *,
+        after_event_id: int = 0,
+        quiet_seconds: float = 5,
+        max_wait_seconds: float = 30,
+        max_events: int = 20,
+        respect_typing: bool = True,
+        typing_ttl_seconds: float = 8,
+    ) -> dict[str, Any]:
+        await self.start()
+        if quiet_seconds < 0 or max_wait_seconds < 0 or typing_ttl_seconds < 0:
+            raise ValueError("timing values must be non-negative")
+        if max_events < 1:
+            raise ValueError("max_events must be at least 1")
+
+        loop = asyncio.get_running_loop()
+        started_at = loop.time()
+        deadline = started_at + max_wait_seconds
+        cursor = after_event_id
+        message_events: list[dict[str, Any]] = []
+        last_activity_at: float | None = None
+        typing_active_until = 0.0
+        typing_observed = False
+        ended_reason = "max_wait"
+
+        while True:
+            new_events = self.store.list_events(
+                after_event_id=cursor,
+                channel_id=channel_id,
+                limit=max_events,
+            )
+            if new_events:
+                cursor = new_events[-1]["event_id"]
+
+            for event in new_events:
+                if event["event_type"] == "dm_message_create":
+                    message_events.append(event)
+                    last_activity_at = loop.time()
+                elif event["event_type"] == "dm_typing_start" and respect_typing:
+                    typing_observed = True
+                    last_activity_at = loop.time()
+                    typing_active_until = max(typing_active_until, loop.time() + typing_ttl_seconds)
+
+            now = loop.time()
+            if len(message_events) >= max_events:
+                ended_reason = "max_events"
+                break
+            if message_events and last_activity_at is not None:
+                quiet_deadline = last_activity_at + quiet_seconds
+                if respect_typing:
+                    quiet_deadline = max(quiet_deadline, typing_active_until)
+                if now >= quiet_deadline:
+                    ended_reason = "quiet_period"
+                    break
+            if now >= deadline:
+                ended_reason = "max_wait"
+                break
+
+            await asyncio.sleep(min(0.25, max(0, deadline - now)))
+
+        return {
+            "channel_id": channel_id,
+            "events": message_events[:max_events],
+            "last_event_id": cursor,
+            "ended_reason": ended_reason,
+            "typing_observed": typing_observed,
+        }
+
     @staticmethod
     def estimate_typing_seconds(
         content: str,
@@ -400,13 +567,36 @@ class DiscordUserMcpRuntime:
             await asyncio.sleep(min(remaining, 8))
 
     @staticmethod
-    def _channel_to_dict(channel: DMChannel) -> dict[str, Any]:
+    def _dm_channel_to_dict(channel: DMChannel) -> dict[str, Any]:
         return {
             "channel_id": channel.id,
             "type": channel.type,
             "name": channel.name,
             "recipient_user_ids": [user.id for user in channel.recipients],
             "recipients": [user.model_dump() for user in channel.recipients],
+            "last_message_id": channel.last_message_id,
+        }
+
+    @staticmethod
+    def _guild_to_dict(guild: DiscordGuild) -> dict[str, Any]:
+        return {
+            "guild_id": guild.id,
+            "name": guild.name,
+            "icon": guild.icon,
+            "owner": guild.owner,
+            "permissions": guild.permissions,
+        }
+
+    @staticmethod
+    def _server_channel_to_dict(channel: DiscordChannel) -> dict[str, Any]:
+        return {
+            "channel_id": channel.id,
+            "guild_id": channel.guild_id,
+            "type": channel.type,
+            "name": channel.name,
+            "parent_id": channel.parent_id,
+            "position": channel.position,
+            "topic": channel.topic,
             "last_message_id": channel.last_message_id,
         }
 
