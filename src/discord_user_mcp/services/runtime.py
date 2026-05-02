@@ -40,6 +40,7 @@ class DiscordUserMcpRuntime:
     rest: RestClientProtocol
     watcher: DiscordGatewayWatcher
     gateway_task: asyncio.Task[None] | None = None
+    gateway_enabled: bool = True
 
     @classmethod
     def from_settings(cls, settings: Settings) -> DiscordUserMcpRuntime:
@@ -50,8 +51,17 @@ class DiscordUserMcpRuntime:
         return cls(settings=settings, token=token, store=store, rest=rest, watcher=watcher)
 
     async def start(self) -> None:
+        if not self.gateway_enabled:
+            return
         if self.gateway_task is None or self.gateway_task.done():
             self.gateway_task = asyncio.create_task(self.watcher.run_forever())
+
+    async def wait_until_gateway_ready(self, *, timeout: float = 3) -> None:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < deadline:
+            if self.watcher.status.current_user_id or self.watcher.status.last_error:
+                return
+            await asyncio.sleep(0.1)
 
     async def close(self) -> None:
         self.watcher.stop()
@@ -63,6 +73,8 @@ class DiscordUserMcpRuntime:
         self.store.close()
 
     async def status(self) -> dict[str, Any]:
+        await self.start()
+        await self.wait_until_gateway_ready(timeout=2)
         return {
             "connected": self.watcher.status.connected,
             "current_user_id": self.watcher.status.current_user_id,
@@ -79,6 +91,7 @@ class DiscordUserMcpRuntime:
         }
 
     async def refresh_dms(self) -> list[dict[str, Any]]:
+        await self.start()
         channels = await self.rest.list_dm_channels()
         self.store.upsert_dm_channels(channels)
         return [self._channel_to_dict(channel) for channel in channels]
@@ -118,6 +131,7 @@ class DiscordUserMcpRuntime:
         after: str | None = None,
         around: str | None = None,
     ) -> list[dict[str, Any]]:
+        await self.start()
         messages = await self.rest.read_messages(
             channel_id,
             limit=limit,
@@ -130,19 +144,21 @@ class DiscordUserMcpRuntime:
         return [self._message_to_dict(message) for message in messages]
 
     async def send_dm(self, channel_id: str, content: str) -> dict[str, Any]:
+        await self.start()
         if not self.settings.allow_send:
             raise RuntimeError("Sending is disabled by ALLOW_SEND=false")
         message = await self.rest.send_message(channel_id, content)
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
-    def poll_new_dm_events(
+    async def poll_new_dm_events(
         self,
         *,
         after_event_id: int = 0,
         limit: int = 20,
         channel_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        await self.start()
         return self.store.list_events(
             after_event_id=after_event_id,
             channel_id=channel_id,
@@ -163,6 +179,7 @@ class DiscordUserMcpRuntime:
         wait_seconds: float = 0,
         max_events: int = 10,
     ) -> dict[str, Any]:
+        await self.start()
         active = self.store.get_active_watch()
         if active is None:
             return {"active": False, "events": []}

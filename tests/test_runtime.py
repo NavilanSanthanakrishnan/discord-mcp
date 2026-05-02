@@ -84,6 +84,7 @@ def make_runtime(tmp_path: Path, *, allow_send: bool = True) -> DiscordUserMcpRu
         store=store,
         rest=FakeRest(),
         watcher=watcher,
+        gateway_enabled=False,
     )
 
 

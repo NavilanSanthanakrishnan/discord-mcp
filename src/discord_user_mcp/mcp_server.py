@@ -69,12 +69,12 @@ def create_mcp(
         return await runtime.send_dm(channel_id, content)
 
     @mcp.tool(name="poll_new_dm_events", description="Poll incoming DM events captured by Gateway.")
-    def poll_new_dm_events(
+    async def poll_new_dm_events(
         after_event_id: int = 0,
         limit: int = 20,
         channel_id: str | None = None,
     ) -> list[dict]:
-        return runtime.poll_new_dm_events(
+        return await runtime.poll_new_dm_events(
             after_event_id=after_event_id,
             limit=limit,
             channel_id=channel_id,
