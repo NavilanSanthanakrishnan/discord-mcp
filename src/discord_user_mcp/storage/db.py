@@ -42,6 +42,14 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_channel_event_id ON events(channel_id, event_id);
 CREATE INDEX IF NOT EXISTS idx_messages_channel_timestamp ON messages(channel_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS active_watch (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    channel_id TEXT NOT NULL,
+    context_limit INTEGER NOT NULL DEFAULT 30,
+    last_event_id INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -76,6 +84,27 @@ class DiscordStore:
                     """,
                     (channel.id, channel.name, recipients_json, channel.last_message_id),
                 )
+
+    def list_dm_channels(self) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            """
+            SELECT channel_id, name, recipients_json, last_message_id
+            FROM dm_channels
+            ORDER BY COALESCE(last_message_id, '0') DESC
+            """
+        ).fetchall()
+        return [
+            {
+                "channel_id": row["channel_id"],
+                "name": row["name"],
+                "recipients": json.loads(row["recipients_json"]),
+                "recipient_user_ids": [
+                    recipient["id"] for recipient in json.loads(row["recipients_json"])
+                ],
+                "last_message_id": row["last_message_id"],
+            }
+            for row in rows
+        ]
 
     def save_message(self, message: DiscordMessage, *, current_user_id: str | None = None) -> None:
         is_from_self = int(current_user_id is not None and message.author_id == current_user_id)
@@ -160,3 +189,49 @@ class DiscordStore:
             }
             for row in rows
         ]
+
+    def set_active_watch(self, channel_id: str, *, context_limit: int = 30) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO active_watch(singleton_id, channel_id, context_limit, last_event_id)
+                VALUES (1, ?, ?, 0)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    channel_id = excluded.channel_id,
+                    context_limit = excluded.context_limit,
+                    last_event_id = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (channel_id, context_limit),
+            )
+
+    def get_active_watch(self) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            """
+            SELECT channel_id, context_limit, last_event_id
+            FROM active_watch
+            WHERE singleton_id = 1
+            """
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "channel_id": row["channel_id"],
+            "context_limit": row["context_limit"],
+            "last_event_id": row["last_event_id"],
+        }
+
+    def update_active_watch_last_event(self, event_id: int) -> None:
+        with self._conn:
+            self._conn.execute(
+                """
+                UPDATE active_watch
+                SET last_event_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE singleton_id = 1
+                """,
+                (event_id,),
+            )
+
+    def clear_active_watch(self) -> None:
+        with self._conn:
+            self._conn.execute("DELETE FROM active_watch WHERE singleton_id = 1")
