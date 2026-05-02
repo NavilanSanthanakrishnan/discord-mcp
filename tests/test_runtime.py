@@ -25,8 +25,10 @@ class FakeRest:
             )
         ]
         self.sent: list[tuple[str, str]] = []
+        self.closed = False
 
     async def aclose(self) -> None:
+        self.closed = True
         return None
 
     async def get_current_user(self) -> dict[str, Any]:

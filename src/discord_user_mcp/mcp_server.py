@@ -15,7 +15,10 @@ async def _lifespan(runtime: DiscordUserMcpRuntime) -> AsyncIterator[dict[str, o
     try:
         yield {"runtime": runtime}
     finally:
-        await runtime.close()
+        # FastMCP can enter/exit this lifespan around streamable HTTP sessions.
+        # Keep the Discord runtime process-scoped so a client disconnect does not
+        # close the REST client, SQLite store, or live Gateway watcher.
+        pass
 
 
 def create_mcp(

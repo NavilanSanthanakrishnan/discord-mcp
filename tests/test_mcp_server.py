@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from discord_user_mcp.mcp_server import create_mcp
+from discord_user_mcp.mcp_server import _lifespan, create_mcp
 from tests.test_runtime import make_runtime
 
 
@@ -24,3 +24,16 @@ async def test_mcp_registers_expected_tools(tmp_path: Path) -> None:
         } <= tool_names
     finally:
         runtime.store.close()
+
+
+@pytest.mark.asyncio
+async def test_lifespan_keeps_runtime_open_between_http_sessions(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        async with _lifespan(runtime):
+            pass
+
+        assert runtime.rest.closed is False
+        assert runtime.store.list_dm_channels() == []
+    finally:
+        await runtime.close()
