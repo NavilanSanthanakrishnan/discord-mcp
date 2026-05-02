@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+import httpx
+
+from discord_user_mcp.discord.models import DM_CHANNEL_TYPES, DiscordMessage, DMChannel
+
+
+class DiscordRestError(RuntimeError):
+    def __init__(self, status_code: int, message: str):
+        super().__init__(f"Discord REST request failed ({status_code}): {message}")
+        self.status_code = status_code
+        self.message = message
+
+
+class DiscordRestClient:
+    def __init__(
+        self,
+        token: str,
+        *,
+        base_url: str = "https://discord.com/api/v9",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._token = token
+        self._base_url = base_url.rstrip("/")
+        self._client = client or httpx.AsyncClient(timeout=30)
+        self._owns_client = client is None
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": self._token,
+            "Content-Type": "application/json",
+            "User-Agent": "DiscordMCP/0.1",
+        }
+
+    async def _request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any | None] | None = None,
+        json_body: Mapping[str, Any] | None = None,
+    ) -> Any:
+        url = f"{self._base_url}/{path.lstrip('/')}"
+        clean_params = {key: value for key, value in (params or {}).items() if value is not None}
+        response = await self._client.request(
+            method,
+            url,
+            headers=self._headers(),
+            params=clean_params,
+            json=json_body,
+        )
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+                message = payload.get("message", response.text)
+            except ValueError:
+                message = response.text
+            raise DiscordRestError(response.status_code, message)
+        if not response.content:
+            return None
+        return response.json()
+
+    async def get_current_user(self) -> dict[str, Any]:
+        return await self._request_json("GET", "users/@me")
+
+    async def list_dm_channels(self) -> list[DMChannel]:
+        payload = await self._request_json("GET", "users/@me/channels")
+        return [
+            DMChannel.from_discord(channel)
+            for channel in payload
+            if channel.get("type") in DM_CHANNEL_TYPES
+        ]
+
+    async def read_messages(
+        self,
+        channel_id: str,
+        *,
+        limit: int = 20,
+        before: str | None = None,
+        after: str | None = None,
+        around: str | None = None,
+    ) -> list[DiscordMessage]:
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        cursor_count = sum(value is not None for value in (before, after, around))
+        if cursor_count > 1:
+            raise ValueError("only one of before, after, or around can be provided")
+
+        payload = await self._request_json(
+            "GET",
+            f"channels/{channel_id}/messages",
+            params={"limit": limit, "before": before, "after": after, "around": around},
+        )
+        return [DiscordMessage.from_discord(message) for message in payload]
+
+    async def send_message(self, channel_id: str, content: str) -> DiscordMessage:
+        if not content.strip():
+            raise ValueError("content must not be blank")
+        payload = await self._request_json(
+            "POST",
+            f"channels/{channel_id}/messages",
+            json_body={"content": content},
+        )
+        return DiscordMessage.from_discord(payload)
