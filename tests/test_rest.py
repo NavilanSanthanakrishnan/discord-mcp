@@ -97,3 +97,87 @@ async def test_send_message_posts_content() -> None:
 
     assert message.id == "789"
     assert message.content == "hello back"
+
+
+@pytest.mark.asyncio
+async def test_edit_delete_and_typing_endpoints() -> None:
+    seen: list[tuple[str, str, bytes]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, request.url.path, request.content))
+        if request.method == "DELETE":
+            return httpx.Response(204)
+        if request.url.path.endswith("/typing"):
+            return httpx.Response(204)
+        return httpx.Response(
+            200,
+            json={
+                "id": "789",
+                "channel_id": "dm1",
+                "content": "edited",
+                "timestamp": "2026-05-01T00:00:01+00:00",
+                "author": {"id": "me", "username": "me"},
+                "edited_timestamp": "2026-05-01T00:00:02+00:00",
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        edited = await client.edit_message("dm1", "789", "edited")
+        await client.delete_message("dm1", "789")
+        await client.send_typing_indicator("dm1")
+
+    assert edited.content == "edited"
+    assert seen == [
+        (
+            "PATCH",
+            "/api/v9/channels/dm1/messages/789",
+            b'{"content":"edited"}',
+        ),
+        ("DELETE", "/api/v9/channels/dm1/messages/789", b""),
+        ("POST", "/api/v9/channels/dm1/typing", b""),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_message_with_attachments_uses_multipart(tmp_path) -> None:
+    attachment = tmp_path / "note.txt"
+    attachment.write_text("hello file", encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v9/channels/dm1/messages"
+        assert "multipart/form-data" in request.headers["Content-Type"]
+        body = request.content
+        assert b'name="payload_json"' in body
+        assert b'name="files[0]"; filename="note.txt"' in body
+        return httpx.Response(
+            200,
+            json={
+                "id": "790",
+                "channel_id": "dm1",
+                "content": "with file",
+                "timestamp": "2026-05-01T00:00:01+00:00",
+                "author": {"id": "me", "username": "me"},
+                "attachments": [{"id": "a1", "filename": "note.txt"}],
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        message = await client.send_message_with_attachments(
+            "dm1",
+            content="with file",
+            attachment_paths=[str(attachment)],
+        )
+
+    assert message.id == "790"
+    assert message.raw["attachments"][0]["filename"] == "note.txt"

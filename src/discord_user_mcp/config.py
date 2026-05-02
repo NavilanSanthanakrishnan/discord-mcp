@@ -21,6 +21,9 @@ class Settings:
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8085
     allow_send: bool = True
+    natural_typing_wpm: int = 55
+    natural_typing_min_seconds: float = 1.0
+    natural_typing_max_seconds: float = 20.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -35,6 +38,9 @@ class Settings:
             mcp_port=int(os.getenv("MCP_PORT", "8085")),
             allow_send=os.getenv("ALLOW_SEND", "true").strip().lower()
             not in {"0", "false", "no", "off"},
+            natural_typing_wpm=int(os.getenv("NATURAL_TYPING_WPM", "55")),
+            natural_typing_min_seconds=float(os.getenv("NATURAL_TYPING_MIN_SECONDS", "1.0")),
+            natural_typing_max_seconds=float(os.getenv("NATURAL_TYPING_MAX_SECONDS", "20.0")),
         )
 
     def read_token(self) -> str:

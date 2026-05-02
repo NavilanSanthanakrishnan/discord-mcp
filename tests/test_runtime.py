@@ -25,6 +25,10 @@ class FakeRest:
             )
         ]
         self.sent: list[tuple[str, str]] = []
+        self.edited: list[tuple[str, str, str]] = []
+        self.deleted: list[tuple[str, str]] = []
+        self.typing_channel_ids: list[str] = []
+        self.attachment_sends: list[tuple[str, list[str], str | None]] = []
         self.closed = False
 
     async def aclose(self) -> None:
@@ -70,6 +74,50 @@ class FakeRest:
             raw={"id": "m3"},
         )
 
+    async def edit_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage:
+        self.edited.append((channel_id, message_id, content))
+        return DiscordMessage(
+            id=message_id,
+            channel_id=channel_id,
+            author_id="me",
+            author_name="me",
+            content=content,
+            timestamp=datetime(2026, 5, 1, 0, 0, 2, tzinfo=UTC),
+            raw={"id": message_id, "edited_timestamp": "2026-05-01T00:00:02+00:00"},
+        )
+
+    async def delete_message(self, channel_id: str, message_id: str) -> None:
+        self.deleted.append((channel_id, message_id))
+
+    async def send_typing_indicator(self, channel_id: str) -> None:
+        self.typing_channel_ids.append(channel_id)
+
+    async def send_message_with_attachments(
+        self,
+        channel_id: str,
+        *,
+        content: str | None = None,
+        attachment_paths: list[str],
+    ) -> DiscordMessage:
+        self.attachment_sends.append((channel_id, attachment_paths, content))
+        return DiscordMessage(
+            id="m4",
+            channel_id=channel_id,
+            author_id="me",
+            author_name="me",
+            content=content or "",
+            timestamp=datetime(2026, 5, 1, 0, 0, 3, tzinfo=UTC),
+            raw={
+                "id": "m4",
+                "attachments": [{"id": "a1", "filename": "image.png"}],
+            },
+        )
+
 
 def make_runtime(tmp_path: Path, *, allow_send: bool = True) -> DiscordUserMcpRuntime:
     settings = Settings(
@@ -111,6 +159,71 @@ async def test_send_dm_can_be_disabled(tmp_path: Path) -> None:
             await runtime.send_dm("dm1", "hello")
     finally:
         await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_edit_delete_typing_and_attachments(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        edited = await runtime.edit_dm_message("dm1", "m3", "fixed")
+        assert edited["content"] == "fixed"
+        assert runtime.rest.edited == [("dm1", "m3", "fixed")]
+
+        deleted = await runtime.delete_dm_message("dm1", "m3")
+        assert deleted == {"deleted": True, "channel_id": "dm1", "message_id": "m3"}
+        assert runtime.rest.deleted == [("dm1", "m3")]
+
+        typing = await runtime.send_typing_indicator("dm1")
+        assert typing == {"typing": True, "channel_id": "dm1"}
+        assert runtime.rest.typing_channel_ids == ["dm1"]
+
+        sent = await runtime.send_dm_attachments(
+            "dm1",
+            attachment_paths=["/tmp/image.png"],
+            content="see this",
+        )
+        assert sent["attachments"] == [{"id": "a1", "filename": "image.png"}]
+        assert runtime.rest.attachment_sends == [("dm1", ["/tmp/image.png"], "see this")]
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_send_natural_dm_types_before_sending(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        sent = await runtime.send_natural_dm(
+            "dm1",
+            "hello there",
+            wpm=120,
+            min_seconds=0,
+            max_seconds=0,
+        )
+
+        assert sent["content"] == "hello there"
+        assert sent["typing_seconds"] == 0
+        assert runtime.rest.sent == [("dm1", "hello there")]
+    finally:
+        await runtime.close()
+
+
+def test_estimate_typing_seconds_clamps_duration(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        assert runtime.estimate_typing_seconds(
+            "one two three four",
+            wpm=60,
+            min_seconds=1,
+            max_seconds=2,
+        ) == 2
+        assert runtime.estimate_typing_seconds(
+            "one",
+            wpm=60,
+            min_seconds=1.5,
+            max_seconds=10,
+        ) == 1.5
+    finally:
+        runtime.store.close()
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import mimetypes
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -67,6 +70,37 @@ class DiscordRestClient:
             return None
         return response.json()
 
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any | None] | None = None,
+        json_body: Mapping[str, Any] | None = None,
+        files: Mapping[str, Any] | None = None,
+    ) -> httpx.Response:
+        url = f"{self._base_url}/{path.lstrip('/')}"
+        clean_params = {key: value for key, value in (params or {}).items() if value is not None}
+        headers = self._headers()
+        if files is not None:
+            headers.pop("Content-Type", None)
+        response = await self._client.request(
+            method,
+            url,
+            headers=headers,
+            params=clean_params,
+            json=json_body if files is None else None,
+            files=files,
+        )
+        if response.status_code >= 400:
+            try:
+                payload = response.json()
+                message = payload.get("message", response.text)
+            except ValueError:
+                message = response.text
+            raise DiscordRestError(response.status_code, message)
+        return response
+
     async def get_current_user(self) -> dict[str, Any]:
         return await self._request_json("GET", "users/@me")
 
@@ -109,3 +143,65 @@ class DiscordRestClient:
             json_body={"content": content},
         )
         return DiscordMessage.from_discord(payload)
+
+    async def edit_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage:
+        if not content.strip():
+            raise ValueError("content must not be blank")
+        payload = await self._request_json(
+            "PATCH",
+            f"channels/{channel_id}/messages/{message_id}",
+            json_body={"content": content},
+        )
+        return DiscordMessage.from_discord(payload)
+
+    async def delete_message(self, channel_id: str, message_id: str) -> None:
+        await self._request_json("DELETE", f"channels/{channel_id}/messages/{message_id}")
+
+    async def send_typing_indicator(self, channel_id: str) -> None:
+        await self._request_json("POST", f"channels/{channel_id}/typing")
+
+    async def send_message_with_attachments(
+        self,
+        channel_id: str,
+        *,
+        content: str | None = None,
+        attachment_paths: list[str],
+    ) -> DiscordMessage:
+        if not attachment_paths:
+            raise ValueError("attachment_paths must contain at least one file")
+        if content is not None and not content.strip():
+            raise ValueError("content must not be blank when provided")
+
+        file_parts: dict[str, Any] = {
+            "payload_json": (
+                None,
+                json.dumps({"content": content or ""}),
+                "application/json",
+            )
+        }
+        opened_files = []
+        try:
+            for index, attachment_path in enumerate(attachment_paths):
+                path = Path(attachment_path).expanduser()
+                if not path.is_file():
+                    raise FileNotFoundError(f"Attachment file not found: {path}")
+                file_obj = path.open("rb")
+                opened_files.append(file_obj)
+                content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+                file_parts[f"files[{index}]"] = (path.name, file_obj, content_type)
+
+            response = await self._request(
+                "POST",
+                f"channels/{channel_id}/messages",
+                files=file_parts,
+            )
+        finally:
+            for file_obj in opened_files:
+                file_obj.close()
+
+        return DiscordMessage.from_discord(response.json())

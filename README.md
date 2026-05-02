@@ -7,10 +7,13 @@ This project is currently focused on **DMs only**:
 - list DM channels
 - read recent DM messages
 - send a DM message
+- edit/delete your own DM messages
+- send local file attachments
+- send typing indicators and natural typed messages
 - keep a singleton Discord Gateway websocket open
 - capture incoming DM `MESSAGE_CREATE` events
 - poll new DM events through MCP tools
-- focus an active watch on one DM conversation
+- focus an active watch on one DM conversation with an idle timeout
 
 > Important: this project uses a Discord user session token from a local file. Treat that token like a password. Keep it local, never commit it, and understand that automating user accounts can violate Discord's terms of service.
 
@@ -50,6 +53,9 @@ DISCORD_GATEWAY_URL='wss://gateway.discord.gg/?v=9&encoding=json'
 MCP_HOST=127.0.0.1
 MCP_PORT=8085
 ALLOW_SEND=true
+NATURAL_TYPING_WPM=55
+NATURAL_TYPING_MIN_SECONDS=1.0
+NATURAL_TYPING_MAX_SECONDS=20.0
 ```
 
 ## Run Tests
@@ -127,6 +133,77 @@ Inputs:
 }
 ```
 
+### `send_natural_dm`
+
+Sends typing indicators for a human-ish duration based on message length and WPM, then sends the DM. Can be disabled with `ALLOW_SEND=false`.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "content": "hello, this is typed naturally",
+  "wpm": 55,
+  "min_seconds": 1.0,
+  "max_seconds": 20.0
+}
+```
+
+If the optional timing fields are omitted, the server uses `NATURAL_TYPING_WPM`, `NATURAL_TYPING_MIN_SECONDS`, and `NATURAL_TYPING_MAX_SECONDS`.
+
+### `send_typing_indicator`
+
+Sends one typing indicator pulse to a DM channel.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659"
+}
+```
+
+### `send_dm_attachments`
+
+Sends one DM message with one or more local file attachments. File paths are read by the MCP server process.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "attachment_paths": ["/absolute/path/to/image.png"],
+  "content": "optional message text"
+}
+```
+
+### `edit_dm_message`
+
+Edits one of your own messages in a DM channel. Discord will reject edits for messages you do not own.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "message_id": "1499949880163172442",
+  "content": "updated text"
+}
+```
+
+### `delete_dm_message`
+
+Deletes one of your own messages in a DM channel. Discord will reject deletes for messages you do not own.
+
+Inputs:
+
+```json
+{
+  "channel_id": "1486088754560106659",
+  "message_id": "1499949880163172442"
+}
+```
+
 ### `poll_new_dm_events`
 
 Returns incoming DM events captured by the Gateway watcher.
@@ -150,7 +227,8 @@ Inputs:
 ```json
 {
   "channel_id": "1486088754560106659",
-  "context_limit": 30
+  "context_limit": 30,
+  "idle_timeout_seconds": 300
 }
 ```
 
@@ -170,6 +248,16 @@ Inputs:
 ### `stop_dm_watch`
 
 Clears the active DM watch.
+
+## Cron-Style Polling Example
+
+The MCP server does not wake the model itself. For token efficiency, run a tiny non-AI poller and only wake an agent when the poller sees useful events.
+
+```bash
+uv run python examples/poll_new_dms.py
+```
+
+That script calls `poll_new_dm_events`, stores a local cursor in `.local/poll_new_dms_cursor.json`, and prints compact notification JSON for new DM events.
 
 ## Architecture
 

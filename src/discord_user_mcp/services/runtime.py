@@ -31,6 +31,25 @@ class RestClientProtocol(Protocol):
 
     async def send_message(self, channel_id: str, content: str) -> DiscordMessage: ...
 
+    async def edit_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> DiscordMessage: ...
+
+    async def delete_message(self, channel_id: str, message_id: str) -> None: ...
+
+    async def send_typing_indicator(self, channel_id: str) -> None: ...
+
+    async def send_message_with_attachments(
+        self,
+        channel_id: str,
+        *,
+        content: str | None = None,
+        attachment_paths: list[str],
+    ) -> DiscordMessage: ...
+
 
 @dataclass
 class DiscordUserMcpRuntime:
@@ -151,6 +170,83 @@ class DiscordUserMcpRuntime:
         self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
         return self._message_to_dict(message)
 
+    async def edit_dm_message(
+        self,
+        channel_id: str,
+        message_id: str,
+        content: str,
+    ) -> dict[str, Any]:
+        await self.start()
+        if not self.settings.allow_send:
+            raise RuntimeError("Editing is disabled by ALLOW_SEND=false")
+        message = await self.rest.edit_message(channel_id, message_id, content)
+        self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
+        return self._message_to_dict(message)
+
+    async def delete_dm_message(self, channel_id: str, message_id: str) -> dict[str, Any]:
+        await self.start()
+        if not self.settings.allow_send:
+            raise RuntimeError("Deleting is disabled by ALLOW_SEND=false")
+        await self.rest.delete_message(channel_id, message_id)
+        return {"deleted": True, "channel_id": channel_id, "message_id": message_id}
+
+    async def send_typing_indicator(self, channel_id: str) -> dict[str, Any]:
+        await self.start()
+        await self.rest.send_typing_indicator(channel_id)
+        return {"typing": True, "channel_id": channel_id}
+
+    async def send_dm_attachments(
+        self,
+        channel_id: str,
+        *,
+        attachment_paths: list[str],
+        content: str | None = None,
+    ) -> dict[str, Any]:
+        await self.start()
+        if not self.settings.allow_send:
+            raise RuntimeError("Sending is disabled by ALLOW_SEND=false")
+        message = await self.rest.send_message_with_attachments(
+            channel_id,
+            content=content,
+            attachment_paths=attachment_paths,
+        )
+        self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
+        return self._message_to_dict(message)
+
+    async def send_natural_dm(
+        self,
+        channel_id: str,
+        content: str,
+        *,
+        wpm: int | None = None,
+        min_seconds: float | None = None,
+        max_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        await self.start()
+        if not self.settings.allow_send:
+            raise RuntimeError("Sending is disabled by ALLOW_SEND=false")
+
+        typing_seconds = self.estimate_typing_seconds(
+            content,
+            wpm=wpm or self.settings.natural_typing_wpm,
+            min_seconds=(
+                self.settings.natural_typing_min_seconds
+                if min_seconds is None
+                else min_seconds
+            ),
+            max_seconds=(
+                self.settings.natural_typing_max_seconds
+                if max_seconds is None
+                else max_seconds
+            ),
+        )
+        await self._simulate_typing(channel_id, typing_seconds)
+        message = await self.rest.send_message(channel_id, content)
+        self.store.save_message(message, current_user_id=self.watcher.status.current_user_id)
+        result = self._message_to_dict(message)
+        result["typing_seconds"] = typing_seconds
+        return result
+
     async def poll_new_dm_events(
         self,
         *,
@@ -165,9 +261,24 @@ class DiscordUserMcpRuntime:
             limit=limit,
         )
 
-    def start_dm_watch(self, channel_id: str, *, context_limit: int = 30) -> dict[str, Any]:
-        self.store.set_active_watch(channel_id, context_limit=context_limit)
-        return {"active": True, "channel_id": channel_id, "context_limit": context_limit}
+    def start_dm_watch(
+        self,
+        channel_id: str,
+        *,
+        context_limit: int = 30,
+        idle_timeout_seconds: int = 300,
+    ) -> dict[str, Any]:
+        self.store.set_active_watch(
+            channel_id,
+            context_limit=context_limit,
+            idle_timeout_seconds=idle_timeout_seconds,
+        )
+        return {
+            "active": True,
+            "channel_id": channel_id,
+            "context_limit": context_limit,
+            "idle_timeout_seconds": idle_timeout_seconds,
+        }
 
     def stop_dm_watch(self) -> dict[str, Any]:
         self.store.clear_active_watch()
@@ -183,6 +294,9 @@ class DiscordUserMcpRuntime:
         active = self.store.get_active_watch()
         if active is None:
             return {"active": False, "events": []}
+        if self.store.active_watch_is_idle_expired():
+            self.store.clear_active_watch()
+            return {"active": False, "events": [], "idle_timeout": True}
 
         deadline = asyncio.get_running_loop().time() + max(0, wait_seconds)
         events: list[dict[str, Any]] = []
@@ -200,6 +314,36 @@ class DiscordUserMcpRuntime:
             self.store.update_active_watch_last_event(events[-1]["event_id"])
 
         return {"active": True, **active, "events": events}
+
+    @staticmethod
+    def estimate_typing_seconds(
+        content: str,
+        *,
+        wpm: int,
+        min_seconds: float,
+        max_seconds: float,
+    ) -> float:
+        if wpm <= 0:
+            raise ValueError("wpm must be greater than 0")
+        if min_seconds < 0 or max_seconds < 0:
+            raise ValueError("typing duration bounds must be non-negative")
+        if min_seconds > max_seconds:
+            raise ValueError("min_seconds cannot be greater than max_seconds")
+        word_count = max(1, len(content.split()))
+        estimated_seconds = (word_count / wpm) * 60
+        return round(min(max(estimated_seconds, min_seconds), max_seconds), 2)
+
+    async def _simulate_typing(self, channel_id: str, typing_seconds: float) -> None:
+        if typing_seconds <= 0:
+            return
+
+        deadline = asyncio.get_running_loop().time() + typing_seconds
+        while True:
+            await self.rest.send_typing_indicator(channel_id)
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(remaining, 8))
 
     @staticmethod
     def _channel_to_dict(channel: DMChannel) -> dict[str, Any]:
@@ -221,4 +365,6 @@ class DiscordUserMcpRuntime:
             "author_name": message.author_name,
             "content": message.content,
             "timestamp": message.timestamp.isoformat(),
+            "attachments": message.raw.get("attachments", []),
+            "edited_timestamp": message.raw.get("edited_timestamp"),
         }

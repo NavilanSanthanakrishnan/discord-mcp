@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS active_watch (
     singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
     channel_id TEXT NOT NULL,
     context_limit INTEGER NOT NULL DEFAULT 30,
+    idle_timeout_seconds INTEGER NOT NULL DEFAULT 300,
     last_event_id INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,7 +67,20 @@ class DiscordStore:
 
     def init_schema(self) -> None:
         self._conn.executescript(SCHEMA)
+        self._ensure_column(
+            "active_watch",
+            "idle_timeout_seconds",
+            "INTEGER NOT NULL DEFAULT 300",
+        )
         self._conn.commit()
+
+    def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        columns = {
+            row["name"]
+            for row in self._conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def upsert_dm_channels(self, channels: Iterable[DMChannel]) -> None:
         with self._conn:
@@ -190,25 +204,47 @@ class DiscordStore:
             for row in rows
         ]
 
-    def set_active_watch(self, channel_id: str, *, context_limit: int = 30) -> None:
+    def latest_event_id(self, *, channel_id: str | None = None) -> int:
+        if channel_id:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(event_id), 0) AS latest FROM events WHERE channel_id = ?",
+                (channel_id,),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(event_id), 0) AS latest FROM events"
+            ).fetchone()
+        return int(row["latest"])
+
+    def set_active_watch(
+        self,
+        channel_id: str,
+        *,
+        context_limit: int = 30,
+        idle_timeout_seconds: int = 300,
+    ) -> None:
+        last_event_id = self.latest_event_id(channel_id=channel_id)
         with self._conn:
             self._conn.execute(
                 """
-                INSERT INTO active_watch(singleton_id, channel_id, context_limit, last_event_id)
-                VALUES (1, ?, ?, 0)
+                INSERT INTO active_watch(
+                    singleton_id, channel_id, context_limit, idle_timeout_seconds, last_event_id
+                )
+                VALUES (1, ?, ?, ?, ?)
                 ON CONFLICT(singleton_id) DO UPDATE SET
                     channel_id = excluded.channel_id,
                     context_limit = excluded.context_limit,
-                    last_event_id = 0,
+                    idle_timeout_seconds = excluded.idle_timeout_seconds,
+                    last_event_id = excluded.last_event_id,
                     updated_at = CURRENT_TIMESTAMP
                 """,
-                (channel_id, context_limit),
+                (channel_id, context_limit, idle_timeout_seconds, last_event_id),
             )
 
     def get_active_watch(self) -> dict[str, Any] | None:
         row = self._conn.execute(
             """
-            SELECT channel_id, context_limit, last_event_id
+            SELECT channel_id, context_limit, idle_timeout_seconds, last_event_id, updated_at
             FROM active_watch
             WHERE singleton_id = 1
             """
@@ -218,8 +254,24 @@ class DiscordStore:
         return {
             "channel_id": row["channel_id"],
             "context_limit": row["context_limit"],
+            "idle_timeout_seconds": row["idle_timeout_seconds"],
             "last_event_id": row["last_event_id"],
+            "updated_at": row["updated_at"],
         }
+
+    def active_watch_is_idle_expired(self) -> bool:
+        row = self._conn.execute(
+            """
+            SELECT
+                idle_timeout_seconds,
+                (strftime('%s', 'now') - strftime('%s', updated_at)) AS idle_seconds
+            FROM active_watch
+            WHERE singleton_id = 1
+            """
+        ).fetchone()
+        if row is None:
+            return False
+        return row["idle_seconds"] >= row["idle_timeout_seconds"]
 
     def update_active_watch_last_event(self, event_id: int) -> None:
         with self._conn:

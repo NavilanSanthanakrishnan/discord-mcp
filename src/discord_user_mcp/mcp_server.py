@@ -71,6 +71,57 @@ def create_mcp(
     async def send_dm(channel_id: str, content: str) -> dict:
         return await runtime.send_dm(channel_id, content)
 
+    @mcp.tool(name="edit_dm_message", description="Edit one of your messages in a DM channel.")
+    async def edit_dm_message(channel_id: str, message_id: str, content: str) -> dict:
+        return await runtime.edit_dm_message(channel_id, message_id, content)
+
+    @mcp.tool(name="delete_dm_message", description="Delete one of your messages in a DM channel.")
+    async def delete_dm_message(channel_id: str, message_id: str) -> dict:
+        return await runtime.delete_dm_message(channel_id, message_id)
+
+    @mcp.tool(
+        name="send_typing_indicator",
+        description="Send one Discord typing indicator pulse to a DM channel.",
+    )
+    async def send_typing_indicator(channel_id: str) -> dict:
+        return await runtime.send_typing_indicator(channel_id)
+
+    @mcp.tool(
+        name="send_dm_attachments",
+        description="Send one DM message with one or more local file attachments.",
+    )
+    async def send_dm_attachments(
+        channel_id: str,
+        attachment_paths: list[str],
+        content: str | None = None,
+    ) -> dict:
+        return await runtime.send_dm_attachments(
+            channel_id,
+            attachment_paths=attachment_paths,
+            content=content,
+        )
+
+    @mcp.tool(
+        name="send_natural_dm",
+        description=(
+            "Simulate natural typing for a DM based on WPM, then send the message."
+        ),
+    )
+    async def send_natural_dm(
+        channel_id: str,
+        content: str,
+        wpm: int | None = None,
+        min_seconds: float | None = None,
+        max_seconds: float | None = None,
+    ) -> dict:
+        return await runtime.send_natural_dm(
+            channel_id,
+            content,
+            wpm=wpm,
+            min_seconds=min_seconds,
+            max_seconds=max_seconds,
+        )
+
     @mcp.tool(name="poll_new_dm_events", description="Poll incoming DM events captured by Gateway.")
     async def poll_new_dm_events(
         after_event_id: int = 0,
@@ -87,8 +138,16 @@ def create_mcp(
         name="start_dm_watch",
         description="Focus incremental event polling on one DM channel.",
     )
-    def start_dm_watch(channel_id: str, context_limit: int = 30) -> dict:
-        return runtime.start_dm_watch(channel_id, context_limit=context_limit)
+    def start_dm_watch(
+        channel_id: str,
+        context_limit: int = 30,
+        idle_timeout_seconds: int = 300,
+    ) -> dict:
+        return runtime.start_dm_watch(
+            channel_id,
+            context_limit=context_limit,
+            idle_timeout_seconds=idle_timeout_seconds,
+        )
 
     @mcp.tool(
         name="poll_active_dm",

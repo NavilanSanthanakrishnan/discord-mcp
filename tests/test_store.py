@@ -35,6 +35,8 @@ def test_store_channels_messages_and_events(tmp_path) -> None:
 
         events = store.list_events(after_event_id=0)
         assert event_id == 1
+        assert store.latest_event_id() == 1
+        assert store.latest_event_id(channel_id="dm1") == 1
         assert events == [
             {
                 "event_id": 1,
@@ -45,5 +47,38 @@ def test_store_channels_messages_and_events(tmp_path) -> None:
                 "created_at": events[0]["created_at"],
             }
         ]
+    finally:
+        store.close()
+
+
+def test_active_watch_idle_timeout(tmp_path) -> None:
+    store = DiscordStore(tmp_path / "state.sqlite")
+    try:
+        store.set_active_watch("dm1", context_limit=10, idle_timeout_seconds=0)
+
+        active = store.get_active_watch()
+        assert active is not None
+        assert active["channel_id"] == "dm1"
+        assert active["context_limit"] == 10
+        assert active["idle_timeout_seconds"] == 0
+        assert store.active_watch_is_idle_expired() is True
+    finally:
+        store.close()
+
+
+def test_active_watch_starts_after_existing_events(tmp_path) -> None:
+    store = DiscordStore(tmp_path / "state.sqlite")
+    try:
+        store.add_event(
+            "dm_message_create",
+            channel_id="dm1",
+            message_id="old",
+            payload={"content": "old"},
+        )
+        store.set_active_watch("dm1")
+
+        active = store.get_active_watch()
+        assert active is not None
+        assert active["last_event_id"] == 1
     finally:
         store.close()
