@@ -83,38 +83,6 @@ Default MCP endpoint:
 http://127.0.0.1:8085/mcp
 ```
 
-## Run The Custom Status Rotator
-
-This repo also ships a small CLI that rotates your Discord custom status one word at a time through the same `PATCH /users/@me/settings` endpoint used by the MCP tool.
-
-Default behavior:
-
-```bash
-uv run discord-custom-status-rotator
-```
-
-That defaults to the phrase `jump back kick back`, waits `1` second between updates, and keeps looping until you stop it.
-
-Useful variants:
-
-```bash
-uv run discord-custom-status-rotator Jump back kick back
-uv run discord-custom-status-rotator --text "jump back kick back whip around and spin"
-uv run discord-custom-status-rotator --text "jump back kick back" --emoji-name "🔥"
-uv run discord-custom-status-rotator --text "jump back kick back" --max-updates 8 --clear-on-exit
-uv run discord-custom-status-rotator --text "jump back kick back" --expires-in-seconds 5
-```
-
-Supported inputs:
-
-- plain text words
-- unicode emoji via `--emoji-name`
-- custom Discord emoji via `--emoji-name` plus `--emoji-id`
-- optional expiration refresh via `--expires-in-seconds`
-- token-file override via `--token-file`
-
-For a 24/7 loop, run it under `tmux`, `screen`, `launchd`, Docker, or another supervisor.
-
 Connect Codex:
 
 ```bash

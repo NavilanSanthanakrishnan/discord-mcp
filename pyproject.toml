@@ -14,7 +14,6 @@ dependencies = [
 
 [project.scripts]
 discord-user-mcp = "discord_user_mcp.main:main"
-discord-custom-status-rotator = "discord_user_mcp.status_rotator:main"
 
 [build-system]
 requires = ["hatchling"]
