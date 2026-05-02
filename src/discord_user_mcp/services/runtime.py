@@ -5,7 +5,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from discord_user_mcp.config import Settings, redact_token
+from discord_user_mcp.config import Settings
 from discord_user_mcp.discord.gateway import DiscordGatewayWatcher
 from discord_user_mcp.discord.models import DiscordMessage, DMChannel
 from discord_user_mcp.discord.rest import DiscordRestClient
@@ -73,7 +73,7 @@ class DiscordUserMcpRuntime:
             if self.watcher.status.last_heartbeat_ack_at
             else None,
             "last_error": self.watcher.status.last_error,
-            "token": redact_token(self.token),
+            "token_loaded": bool(self.token),
             "db_path": str(self.settings.db_path),
             "allow_send": self.settings.allow_send,
         }
