@@ -41,6 +41,33 @@ def create_mcp(
         return await runtime.status()
 
     @mcp.tool(
+        name="get_custom_status",
+        description="Read the account's current presence status and custom status text/emoji.",
+    )
+    async def get_custom_status() -> dict:
+        return await runtime.get_custom_status()
+
+    @mcp.tool(
+        name="set_custom_status",
+        description=(
+            "Set or clear the account custom status. Text, unicode emoji_name, "
+            "custom emoji_id, and ISO expires_at are optional."
+        ),
+    )
+    async def set_custom_status(
+        text: str | None = None,
+        emoji_name: str | None = None,
+        emoji_id: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict:
+        return await runtime.set_custom_status(
+            text=text,
+            emoji_name=emoji_name,
+            emoji_id=emoji_id,
+            expires_at=expires_at,
+        )
+
+    @mcp.tool(
         name="list_dms",
         description="List direct message channels visible to the user session.",
     )

@@ -96,6 +96,49 @@ codex mcp list
 
 Returns Gateway/runtime status, including whether the Gateway is connected and how many DMs are cached.
 
+### `get_custom_status`
+
+Reads the account's current presence status and custom status.
+
+Output:
+
+```json
+{
+  "status": "dnd",
+  "custom_status": {
+    "text": "tester",
+    "expires_at": null,
+    "emoji_id": null,
+    "emoji_name": null
+  }
+}
+```
+
+### `set_custom_status`
+
+Sets or clears the account custom status. This uses Discord's JSON settings endpoint, not the protobuf settings endpoint.
+
+Inputs:
+
+```json
+{
+  "text": "tester",
+  "emoji_name": "🔥",
+  "emoji_id": null,
+  "expires_at": null
+}
+```
+
+Supported patterns:
+
+```text
+Text only: text="tester"
+Unicode emoji: emoji_name="🔥"
+Custom emoji: emoji_name="emoji_name", emoji_id="123456789012345678"
+Expiration: expires_at="2026-05-03T00:00:00.000Z"
+Clear custom status: omit all fields or pass nulls
+```
+
 ### `list_dms`
 
 Lists DM channels visible to the user session.

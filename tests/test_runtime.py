@@ -50,6 +50,12 @@ class FakeRest:
         self.removed_reactions: list[tuple[str, str, str]] = []
         self.typing_channel_ids: list[str] = []
         self.attachment_sends: list[tuple[str, list[str], str | None]] = []
+        self.custom_status: dict[str, Any] | None = {
+            "text": "tester",
+            "emoji_name": None,
+            "emoji_id": None,
+            "expires_at": None,
+        }
         self.closed = False
 
     async def aclose(self) -> None:
@@ -58,6 +64,29 @@ class FakeRest:
 
     async def get_current_user(self) -> dict[str, Any]:
         return {"id": "me"}
+
+    async def get_user_settings(self) -> dict[str, Any]:
+        return {"status": "dnd", "custom_status": self.custom_status}
+
+    async def set_custom_status(
+        self,
+        *,
+        text: str | None,
+        emoji_name: str | None = None,
+        emoji_id: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        self.custom_status = (
+            None
+            if text is None and emoji_name is None and emoji_id is None and expires_at is None
+            else {
+                "text": text,
+                "emoji_name": emoji_name,
+                "emoji_id": emoji_id,
+                "expires_at": expires_at,
+            }
+        )
+        return {"status": "dnd", "custom_status": self.custom_status}
 
     async def list_dm_channels(self) -> list[DMChannel]:
         return self.channels
@@ -211,6 +240,30 @@ async def test_list_and_read_dms(tmp_path: Path) -> None:
                 "time": "2026-05-01T00:00:00+00:00",
             }
         ]
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_get_and_set_custom_status(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        current = await runtime.get_custom_status()
+        assert current["custom_status"]["text"] == "tester"
+
+        updated = await runtime.set_custom_status(text="ship it", emoji_name="🚢")
+        assert updated == {
+            "status": "dnd",
+            "custom_status": {
+                "text": "ship it",
+                "emoji_name": "🚢",
+                "emoji_id": None,
+                "expires_at": None,
+            },
+        }
+
+        cleared = await runtime.set_custom_status()
+        assert cleared == {"status": "dnd", "custom_status": None}
     finally:
         await runtime.close()
 

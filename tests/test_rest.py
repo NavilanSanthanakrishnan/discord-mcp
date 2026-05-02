@@ -41,6 +41,93 @@ async def test_list_dm_channels_filters_and_sends_raw_auth_header() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_and_set_custom_status() -> None:
+    seen: list[tuple[str, str, dict | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        seen.append((request.method, request.url.path, body))
+        return httpx.Response(
+            200,
+            json={
+                "status": "dnd",
+                "custom_status": {
+                    "text": "tester",
+                    "emoji_name": "🔥",
+                    "emoji_id": None,
+                    "expires_at": None,
+                },
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        settings = await client.get_user_settings()
+        updated = await client.set_custom_status(text="tester", emoji_name="🔥")
+        cleared = await client.set_custom_status(text=None)
+
+    assert settings["custom_status"]["text"] == "tester"
+    assert updated["custom_status"]["emoji_name"] == "🔥"
+    assert cleared["custom_status"]["text"] == "tester"
+    assert seen == [
+        ("GET", "/api/v9/users/@me/settings", None),
+        (
+            "PATCH",
+            "/api/v9/users/@me/settings",
+            {
+                "custom_status": {
+                    "text": "tester",
+                    "emoji_name": "🔥",
+                    "emoji_id": None,
+                    "expires_at": None,
+                }
+            },
+        ),
+        ("PATCH", "/api/v9/users/@me/settings", {"custom_status": None}),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_set_custom_status_supports_custom_emoji_and_expiration() -> None:
+    seen_body: dict | None = None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_body
+        seen_body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"status": "online", "custom_status": seen_body["custom_status"]},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "token",
+            base_url="https://discord.test/api/v9",
+            client=http_client,
+        )
+        updated = await client.set_custom_status(
+            text="shipping",
+            emoji_name="shipit",
+            emoji_id="123456789012345678",
+            expires_at="2026-05-03T00:00:00.000Z",
+        )
+
+    assert seen_body == {
+        "custom_status": {
+            "text": "shipping",
+            "emoji_name": "shipit",
+            "emoji_id": "123456789012345678",
+            "expires_at": "2026-05-03T00:00:00.000Z",
+        }
+    }
+    assert updated["custom_status"]["emoji_id"] == "123456789012345678"
+
+
+@pytest.mark.asyncio
 async def test_read_messages_builds_cursor_query() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert str(request.url) == (

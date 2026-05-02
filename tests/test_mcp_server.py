@@ -14,6 +14,8 @@ async def test_mcp_registers_expected_tools(tmp_path: Path) -> None:
         tool_names = {tool.name for tool in await mcp.list_tools()}
         assert {
             "discord_status",
+            "get_custom_status",
+            "set_custom_status",
             "list_dms",
             "list_servers",
             "list_server_channels",

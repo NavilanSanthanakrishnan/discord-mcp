@@ -22,6 +22,17 @@ class RestClientProtocol(Protocol):
 
     async def get_current_user(self) -> dict[str, Any]: ...
 
+    async def get_user_settings(self) -> dict[str, Any]: ...
+
+    async def set_custom_status(
+        self,
+        *,
+        text: str | None,
+        emoji_name: str | None = None,
+        emoji_id: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]: ...
+
     async def list_dm_channels(self) -> list[DMChannel]: ...
 
     async def list_guilds(self) -> list[DiscordGuild]: ...
@@ -127,6 +138,36 @@ class DiscordUserMcpRuntime:
             "token_loaded": bool(self.token),
             "db_path": str(self.settings.db_path),
             "allow_send": self.settings.allow_send,
+        }
+
+    async def get_custom_status(self) -> dict[str, Any]:
+        await self.start()
+        settings = await self.rest.get_user_settings()
+        return {
+            "status": settings.get("status"),
+            "custom_status": settings.get("custom_status"),
+        }
+
+    async def set_custom_status(
+        self,
+        *,
+        text: str | None = None,
+        emoji_name: str | None = None,
+        emoji_id: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        await self.start()
+        if text is not None and not text.strip():
+            text = None
+        settings = await self.rest.set_custom_status(
+            text=text,
+            emoji_name=emoji_name,
+            emoji_id=emoji_id,
+            expires_at=expires_at,
+        )
+        return {
+            "status": settings.get("status"),
+            "custom_status": settings.get("custom_status"),
         }
 
     async def refresh_dms(self) -> list[dict[str, Any]]:

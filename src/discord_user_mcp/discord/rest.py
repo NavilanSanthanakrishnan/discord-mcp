@@ -112,6 +112,33 @@ class DiscordRestClient:
     async def get_current_user(self) -> dict[str, Any]:
         return await self._request_json("GET", "users/@me")
 
+    async def get_user_settings(self) -> dict[str, Any]:
+        return await self._request_json("GET", "users/@me/settings")
+
+    async def set_custom_status(
+        self,
+        *,
+        text: str | None,
+        emoji_name: str | None = None,
+        emoji_id: str | None = None,
+        expires_at: str | None = None,
+    ) -> dict[str, Any]:
+        custom_status: dict[str, Any] | None
+        if text is None and emoji_name is None and emoji_id is None and expires_at is None:
+            custom_status = None
+        else:
+            custom_status = {
+                "text": text,
+                "emoji_name": emoji_name,
+                "emoji_id": emoji_id,
+                "expires_at": expires_at,
+            }
+        return await self._request_json(
+            "PATCH",
+            "users/@me/settings",
+            json_body={"custom_status": custom_status},
+        )
+
     async def list_dm_channels(self) -> list[DMChannel]:
         payload = await self._request_json("GET", "users/@me/channels")
         return [
