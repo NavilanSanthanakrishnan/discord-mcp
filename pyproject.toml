@@ -1,7 +1,7 @@
 [project]
 name = "discord-user-mcp"
 version = "0.1.0"
-description = "Local user-authenticated Discord DM MCP server"
+description = "Local Discord MCP server for bot-token and optional local session-token workflows"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

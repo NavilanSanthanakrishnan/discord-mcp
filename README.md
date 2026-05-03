@@ -1,15 +1,23 @@
-# Discord User Discord MCP
+# Discord MCP
 
-Local MCP server for user-authenticated Discord direct messages and server text channels.
+Local MCP server for Discord automation through MCP tools.
+
+The recommended production-friendly setup is to use an official Discord bot token with
+the permissions and intents your application needs. For local research and personal
+experimentation, the same transport can technically be pointed at a Discord user-session
+Authorization token, but that mode should be treated as private, experimental, and subject
+to Discord's terms and API behavior. Not every tool is available in every auth mode:
+bot-token workflows are best for server/guild automation, while some client-account
+features require a user-session context.
 
 This project currently supports:
 
-- list DM channels
-- read recent DM messages
-- send a DM message
-- reply to a specific DM message
-- edit/delete your own DM messages
-- add/remove your own reactions on DM messages
+- list DM channels when the auth mode supports them
+- read recent messages
+- send messages
+- reply to a specific message
+- edit/delete messages the authenticated actor owns or can manage
+- add/remove reactions
 - send local file attachments
 - send typing indicators and natural typed messages
 - keep a singleton Discord Gateway websocket open
@@ -21,7 +29,10 @@ This project currently supports:
 - list server text-like channels
 - read/send/reply/react in server channels
 
-> Important: this project uses a Discord user session token from a local file. Treat that token like a password. Keep it local, never commit it, and understand that automating user accounts can violate Discord's terms of service.
+> Safety note: use a Discord bot token for public, shared, or production deployments.
+> If you choose to experiment locally with a user-session Authorization token, treat it
+> like a password, keep it private, never commit it, and understand that automating user
+> accounts may violate Discord's terms of service.
 
 ## Current Stack
 
@@ -39,7 +50,22 @@ The imported Java/Spring Boot baseline is still present as reference code, but t
 src/discord_user_mcp/
 ```
 
-## Local Secrets
+## Authentication
+
+The MCP server reads one line from `DISCORD_TOKEN_FILE` and passes it as the
+Discord `Authorization` header.
+
+Recommended bot-token format:
+
+```text
+Bot YOUR_DISCORD_BOT_TOKEN
+```
+
+Optional local experimental user-session format:
+
+```text
+YOUR_DISCORD_USER_SESSION_TOKEN
+```
 
 The default token path is:
 
@@ -47,7 +73,9 @@ The default token path is:
 /Users/navilan/Documents/DiscordMCP/token.txt
 ```
 
-Only the first line is read. This file is ignored by git.
+Only the first line is read. This file is ignored by git. Because different auth modes
+have different Discord API permissions, some tools may fail if the current token type
+does not have access to that endpoint.
 
 Optional environment variables:
 
@@ -86,7 +114,7 @@ http://127.0.0.1:8085/mcp
 Connect Codex:
 
 ```bash
-codex mcp add discord-user-dm-mcp --url http://127.0.0.1:8085/mcp
+codex mcp add discord-mcp --url http://127.0.0.1:8085/mcp
 codex mcp list
 ```
 
@@ -98,7 +126,7 @@ Returns Gateway/runtime status, including whether the Gateway is connected and h
 
 ### `get_custom_status`
 
-Reads the account's current presence status and custom status.
+Reads the authenticated session's current presence status and custom status.
 
 Output:
 
@@ -116,7 +144,7 @@ Output:
 
 ### `set_custom_status`
 
-Sets or clears the account custom status. This uses Discord's JSON settings endpoint, not the protobuf settings endpoint.
+Sets or clears the authenticated session's custom status. This uses Discord's JSON settings endpoint, not the protobuf settings endpoint.
 
 Inputs:
 
@@ -141,7 +169,7 @@ Clear custom status: omit all fields or pass nulls
 
 ### `list_dms`
 
-Lists DM channels visible to the user session.
+Lists DM channels visible to the current auth context, when supported.
 
 Inputs:
 
@@ -155,7 +183,7 @@ Inputs:
 
 ### `list_servers`
 
-Lists Discord servers/guilds visible to the user session.
+Lists Discord servers/guilds visible to the current auth context.
 
 Inputs:
 
@@ -232,7 +260,7 @@ Mention forms:
 User: <@USER_ID>
 Role: <@&ROLE_ID>
 Channel: <#CHANNEL_ID>
-Everyone/here: @everyone or @here, if Discord allows the account to use them
+Everyone/here: @everyone or @here, if Discord allows the authenticated actor to use them
 ```
 
 ### `send_natural_message`
@@ -301,7 +329,7 @@ Inputs:
 
 ### `edit_message`
 
-Edits one of your own messages. Discord will reject edits for messages you do not own.
+Edits a message owned by the authenticated actor. Discord rejects edits without permission.
 
 Inputs:
 
@@ -315,7 +343,7 @@ Inputs:
 
 ### `delete_message`
 
-Deletes one of your own messages. Discord will reject deletes for messages you do not own.
+Deletes a message the authenticated actor owns or can manage. Discord rejects deletes without permission.
 
 Inputs:
 
@@ -350,7 +378,7 @@ For custom Discord emoji, pass the Discord emoji route shape:
 
 ### `remove_reaction`
 
-Removes your own reaction from a message.
+Removes the authenticated actor's reaction from a message.
 
 Inputs:
 
@@ -498,13 +526,13 @@ Call collect_dm_burst with quiet_seconds around 3-8 seconds.
 Then respond once to the returned batch.
 ```
 
-Edit your own message:
+Edit a message:
 
 ```text
 Call edit_message with channel_id, your message_id, and replacement content.
 ```
 
-Delete your own message:
+Delete a message:
 
 ```text
 Call delete_message with channel_id and your message_id.
