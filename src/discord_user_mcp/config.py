@@ -4,8 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-DEFAULT_TOKEN_FILE = Path("/Users/navilan/Documents/DiscordMCP/token.txt")
-DEFAULT_DB_PATH = Path("/Users/navilan/Documents/DiscordMCP/.local/discord_user_mcp.sqlite")
+DEFAULT_TOKEN_FILE = Path("token.txt")
+DEFAULT_DB_PATH = Path(".local/discord_user_mcp.sqlite")
 
 
 class ConfigError(RuntimeError):

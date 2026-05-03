@@ -19,7 +19,7 @@ async def test_list_dm_channels_filters_and_sends_raw_auth_header() -> None:
                 {
                     "id": "dm1",
                     "type": 1,
-                    "recipients": [{"id": "u1", "username": "purplecerd"}],
+                    "recipients": [{"id": "u1", "username": "examplefriend"}],
                     "last_message_id": "m1",
                 },
                 {"id": "guild-text", "type": 0, "name": "general"},
@@ -35,7 +35,7 @@ async def test_list_dm_channels_filters_and_sends_raw_auth_header() -> None:
         channels = await client.list_dm_channels()
 
     assert [channel.id for channel in channels] == ["dm1"]
-    assert channels[0].name == "purplecerd"
+    assert channels[0].name == "examplefriend"
     assert seen_requests[0].headers["Authorization"] == "user-token"
     assert str(seen_requests[0].url) == "https://discord.test/api/v9/users/@me/channels"
 
@@ -52,7 +52,7 @@ async def test_get_and_set_custom_status() -> None:
             json={
                 "status": "dnd",
                 "custom_status": {
-                    "text": "tester",
+                    "text": "working",
                     "emoji_name": "🔥",
                     "emoji_id": None,
                     "expires_at": None,
@@ -67,12 +67,12 @@ async def test_get_and_set_custom_status() -> None:
             client=http_client,
         )
         settings = await client.get_user_settings()
-        updated = await client.set_custom_status(text="tester", emoji_name="🔥")
+        updated = await client.set_custom_status(text="working", emoji_name="🔥")
         cleared = await client.set_custom_status(text=None)
 
-    assert settings["custom_status"]["text"] == "tester"
+    assert settings["custom_status"]["text"] == "working"
     assert updated["custom_status"]["emoji_name"] == "🔥"
-    assert cleared["custom_status"]["text"] == "tester"
+    assert cleared["custom_status"]["text"] == "working"
     assert seen == [
         ("GET", "/api/v9/users/@me/settings", None),
         (
@@ -80,7 +80,7 @@ async def test_get_and_set_custom_status() -> None:
             "/api/v9/users/@me/settings",
             {
                 "custom_status": {
-                    "text": "tester",
+                    "text": "working",
                     "emoji_name": "🔥",
                     "emoji_id": None,
                     "expires_at": None,
@@ -112,7 +112,7 @@ async def test_set_custom_status_supports_custom_emoji_and_expiration() -> None:
         updated = await client.set_custom_status(
             text="shipping",
             emoji_name="shipit",
-            emoji_id="123456789012345678",
+            emoji_id="CUSTOM_OR_DISCORD_ID",
             expires_at="2026-05-03T00:00:00.000Z",
         )
 
@@ -120,11 +120,11 @@ async def test_set_custom_status_supports_custom_emoji_and_expiration() -> None:
         "custom_status": {
             "text": "shipping",
             "emoji_name": "shipit",
-            "emoji_id": "123456789012345678",
+            "emoji_id": "CUSTOM_OR_DISCORD_ID",
             "expires_at": "2026-05-03T00:00:00.000Z",
         }
     }
-    assert updated["custom_status"]["emoji_id"] == "123456789012345678"
+    assert updated["custom_status"]["emoji_id"] == "CUSTOM_OR_DISCORD_ID"
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_read_messages_builds_cursor_query() -> None:
                     "channel_id": "dm1",
                     "content": "hello",
                     "timestamp": "2026-05-01T00:00:00+00:00",
-                    "author": {"id": "u1", "username": "purplecerd"},
+                    "author": {"id": "u1", "username": "examplefriend"},
                 }
             ],
         )

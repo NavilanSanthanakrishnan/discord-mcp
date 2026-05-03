@@ -25,8 +25,8 @@ class FakeRest:
             DMChannel(
                 id="dm1",
                 type=1,
-                name="purplecerd",
-                recipients=[DiscordUser(id="u1", username="purplecerd")],
+                name="examplefriend",
+                recipients=[DiscordUser(id="u1", username="examplefriend")],
                 last_message_id="m2",
             )
         ]
@@ -51,7 +51,7 @@ class FakeRest:
         self.typing_channel_ids: list[str] = []
         self.attachment_sends: list[tuple[str, list[str], str | None]] = []
         self.custom_status: dict[str, Any] | None = {
-            "text": "tester",
+            "text": "working",
             "emoji_name": None,
             "emoji_id": None,
             "expires_at": None,
@@ -111,7 +111,7 @@ class FakeRest:
                 id="m2",
                 channel_id=channel_id,
                 author_id="u1",
-                author_name="purplecerd",
+                author_name="examplefriend",
                 content="new message",
                 timestamp=datetime(2026, 5, 1, tzinfo=UTC),
                 raw={"id": "m2"},
@@ -224,7 +224,7 @@ def make_runtime(tmp_path: Path, *, allow_send: bool = True) -> DiscordUserMcpRu
 async def test_list_and_read_dms(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     try:
-        dms = await runtime.list_dms(query="purple")
+        dms = await runtime.list_dms(query="example")
         assert dms[0]["channel_id"] == "dm1"
 
         messages = await runtime.read_dm("dm1", limit=5)
@@ -234,7 +234,7 @@ async def test_list_and_read_dms(tmp_path: Path) -> None:
         assert compact == [
             {
                 "message_id": "m2",
-                "person": "purplecerd",
+                "person": "examplefriend",
                 "user_id": "u1",
                 "message": "new message",
                 "time": "2026-05-01T00:00:00+00:00",
@@ -249,7 +249,7 @@ async def test_get_and_set_custom_status(tmp_path: Path) -> None:
     runtime = make_runtime(tmp_path)
     try:
         current = await runtime.get_custom_status()
-        assert current["custom_status"]["text"] == "tester"
+        assert current["custom_status"]["text"] == "working"
 
         updated = await runtime.set_custom_status(text="ship it", emoji_name="🚢")
         assert updated == {

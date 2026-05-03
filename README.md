@@ -70,7 +70,7 @@ YOUR_DISCORD_USER_SESSION_TOKEN
 The default token path is:
 
 ```text
-/Users/navilan/Documents/DiscordMCP/token.txt
+./token.txt
 ```
 
 Only the first line is read. This file is ignored by git. Because different auth modes
@@ -80,8 +80,8 @@ does not have access to that endpoint.
 Optional environment variables:
 
 ```bash
-DISCORD_TOKEN_FILE=/Users/navilan/Documents/DiscordMCP/token.txt
-DISCORD_MCP_DB=/Users/navilan/Documents/DiscordMCP/.local/discord_user_mcp.sqlite
+DISCORD_TOKEN_FILE=./token.txt
+DISCORD_MCP_DB=./.local/discord_user_mcp.sqlite
 DISCORD_API_BASE=https://discord.com/api/v9
 DISCORD_GATEWAY_URL='wss://gateway.discord.gg/?v=9&encoding=json'
 MCP_HOST=127.0.0.1
@@ -134,7 +134,7 @@ Output:
 {
   "status": "dnd",
   "custom_status": {
-    "text": "tester",
+    "text": "working",
     "expires_at": null,
     "emoji_id": null,
     "emoji_name": null
@@ -150,7 +150,7 @@ Inputs:
 
 ```json
 {
-  "text": "tester",
+  "text": "working",
   "emoji_name": "🔥",
   "emoji_id": null,
   "expires_at": null
@@ -160,9 +160,9 @@ Inputs:
 Supported patterns:
 
 ```text
-Text only: text="tester"
+Text only: text="working"
 Unicode emoji: emoji_name="🔥"
-Custom emoji: emoji_name="emoji_name", emoji_id="123456789012345678"
+Custom emoji: emoji_name="emoji_name", emoji_id="CUSTOM_OR_DISCORD_ID"
 Expiration: expires_at="2026-05-03T00:00:00.000Z"
 Clear custom status: omit all fields or pass nulls
 ```
@@ -176,7 +176,7 @@ Inputs:
 ```json
 {
   "limit": 50,
-  "query": "purple",
+  "query": "example",
   "refresh": true
 }
 ```
@@ -202,7 +202,7 @@ Inputs:
 
 ```json
 {
-  "guild_id": "123456789012345678",
+  "guild_id": "CUSTOM_OR_DISCORD_ID",
   "limit": 100,
   "query": "general"
 }
@@ -216,7 +216,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "123456789012345678",
+  "channel_id": "CUSTOM_OR_DISCORD_ID",
   "limit": 20,
   "before": null,
   "after": null,
@@ -230,9 +230,9 @@ Compact output:
 ```json
 [
   {
-    "message_id": "123456789012345678",
-    "person": "purplecard",
-    "user_id": "887930806524325909",
+    "message_id": "CUSTOM_OR_DISCORD_ID",
+    "person": "examplefriend",
+    "user_id": "USER_ID",
     "message": "yo can you check this?",
     "time": "2026-05-02T01:45:19.152000+00:00"
   }
@@ -249,8 +249,8 @@ For server pings, include normal Discord mention syntax in `content`.
 
 ```json
 {
-  "channel_id": "123456789012345678",
-  "content": "hello <@123456789012345678>"
+  "channel_id": "CUSTOM_OR_DISCORD_ID",
+  "content": "hello <@CUSTOM_OR_DISCORD_ID>"
 }
 ```
 
@@ -271,7 +271,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "123456789012345678",
+  "channel_id": "CUSTOM_OR_DISCORD_ID",
   "content": "hello, this is typed naturally",
   "wpm": 55,
   "min_seconds": 1.0,
@@ -289,8 +289,8 @@ Inputs:
 
 ```json
 {
-  "channel_id": "123456789012345678",
-  "message_id": "123456789012345678",
+  "channel_id": "CUSTOM_OR_DISCORD_ID",
+  "message_id": "CUSTOM_OR_DISCORD_ID",
   "content": "replying directly to that message"
 }
 ```
@@ -309,7 +309,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659"
+  "channel_id": "CHANNEL_ID"
 }
 ```
 
@@ -321,7 +321,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
+  "channel_id": "CHANNEL_ID",
   "attachment_paths": ["/absolute/path/to/image.png"],
   "content": "optional message text"
 }
@@ -335,8 +335,8 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
-  "message_id": "1499949880163172442",
+  "channel_id": "CHANNEL_ID",
+  "message_id": "MESSAGE_ID",
   "content": "updated text"
 }
 ```
@@ -349,8 +349,8 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
-  "message_id": "1499949880163172442"
+  "channel_id": "CHANNEL_ID",
+  "message_id": "MESSAGE_ID"
 }
 ```
 
@@ -362,8 +362,8 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
-  "message_id": "1499949880163172442",
+  "channel_id": "CHANNEL_ID",
+  "message_id": "MESSAGE_ID",
   "emoji": "🔥"
 }
 ```
@@ -372,7 +372,7 @@ For custom Discord emoji, pass the Discord emoji route shape:
 
 ```json
 {
-  "emoji": "emoji_name:123456789012345678"
+  "emoji": "emoji_name:CUSTOM_OR_DISCORD_ID"
 }
 ```
 
@@ -384,8 +384,8 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
-  "message_id": "1499949880163172442",
+  "channel_id": "CHANNEL_ID",
+  "message_id": "MESSAGE_ID",
   "emoji": "🔥"
 }
 ```
@@ -412,7 +412,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
+  "channel_id": "CHANNEL_ID",
   "after_event_id": 0,
   "quiet_seconds": 5,
   "max_wait_seconds": 30,
@@ -435,7 +435,7 @@ Returns:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
+  "channel_id": "CHANNEL_ID",
   "events": [],
   "last_event_id": 123,
   "ended_reason": "quiet_period",
@@ -451,7 +451,7 @@ Inputs:
 
 ```json
 {
-  "channel_id": "1486088754560106659",
+  "channel_id": "CHANNEL_ID",
   "context_limit": 30,
   "idle_timeout_seconds": 300
 }
@@ -584,5 +584,5 @@ The Gateway is singleton. We do **not** open one websocket per DM. The watcher r
 - Docker/Java baseline builds successfully.
 - Python package lint passes.
 - Python unit tests pass.
-- REST live test resolved the purplecard DM and sent a clearly marked MCP smoke-test message.
+- REST live testing verified DM lookup and clearly marked smoke-test sending in a private local environment.
 - Gateway live test reached `READY` and cached DM channels.

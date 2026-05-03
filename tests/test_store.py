@@ -10,15 +10,15 @@ def test_store_channels_messages_and_events(tmp_path) -> None:
         channel = DMChannel(
             id="dm1",
             type=1,
-            name="purplecerd",
-            recipients=[DiscordUser(id="u1", username="purplecerd")],
+            name="examplefriend",
+            recipients=[DiscordUser(id="u1", username="examplefriend")],
             last_message_id="m1",
         )
         message = DiscordMessage(
             id="m1",
             channel_id="dm1",
             author_id="u1",
-            author_name="purplecerd",
+            author_name="examplefriend",
             content="hello",
             timestamp=datetime(2026, 5, 1, tzinfo=UTC),
             raw={"id": "m1"},

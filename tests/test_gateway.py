@@ -22,7 +22,7 @@ async def test_ready_caches_private_channels(tmp_path) -> None:
                         {
                             "id": "dm1",
                             "type": 1,
-                            "recipients": [{"id": "u1", "username": "purplecerd"}],
+                            "recipients": [{"id": "u1", "username": "examplefriend"}],
                             "last_message_id": "m1",
                         },
                         {"id": "guild-channel", "type": 0, "name": "general"},
@@ -54,7 +54,7 @@ async def test_message_create_from_dm_adds_event(tmp_path) -> None:
                         {
                             "id": "dm1",
                             "type": 1,
-                            "recipients": [{"id": "u1", "username": "purplecerd"}],
+                            "recipients": [{"id": "u1", "username": "examplefriend"}],
                         }
                     ],
                 },
@@ -68,9 +68,9 @@ async def test_message_create_from_dm_adds_event(tmp_path) -> None:
                 "d": {
                     "id": "m1",
                     "channel_id": "dm1",
-                    "content": "hello from purplecerd",
+                    "content": "hello from examplefriend",
                     "timestamp": "2026-05-01T00:00:00+00:00",
-                    "author": {"id": "u1", "username": "purplecerd"},
+                    "author": {"id": "u1", "username": "examplefriend"},
                 },
             }
         )
@@ -78,7 +78,7 @@ async def test_message_create_from_dm_adds_event(tmp_path) -> None:
         events = store.list_events()
         assert len(events) == 1
         assert events[0]["event_type"] == "dm_message_create"
-        assert events[0]["payload"]["message"]["content"] == "hello from purplecerd"
+        assert events[0]["payload"]["message"]["content"] == "hello from examplefriend"
     finally:
         store.close()
 
