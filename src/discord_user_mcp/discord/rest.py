@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import mimetypes
 from collections.abc import Mapping
@@ -43,12 +44,21 @@ class DiscordRestClient:
         if self._owns_client:
             await self._client.aclose()
 
-    def _headers(self) -> dict[str, str]:
-        return {
+    def _headers(
+        self,
+        *,
+        audit_log_reason: str | None = None,
+        json_content: bool = True,
+    ) -> dict[str, str]:
+        headers = {
             "Authorization": self._token,
-            "Content-Type": "application/json",
             "User-Agent": "DiscordMCP/0.1",
         }
+        if json_content:
+            headers["Content-Type"] = "application/json"
+        if audit_log_reason:
+            headers["X-Audit-Log-Reason"] = quote(audit_log_reason, safe="")
+        return headers
 
     async def _request_json(
         self,
@@ -56,16 +66,17 @@ class DiscordRestClient:
         path: str,
         *,
         params: Mapping[str, Any | None] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Any | None = None,
+        audit_log_reason: str | None = None,
     ) -> Any:
         url = f"{self._base_url}/{path.lstrip('/')}"
         clean_params = {key: value for key, value in (params or {}).items() if value is not None}
-        response = await self._client.request(
+        response = await self._request_with_rate_limit(
             method,
             url,
-            headers=self._headers(),
+            headers=self._headers(audit_log_reason=audit_log_reason),
             params=clean_params,
-            json=json_body,
+            json_body=json_body,
         )
         if response.status_code >= 400:
             try:
@@ -84,20 +95,24 @@ class DiscordRestClient:
         path: str,
         *,
         params: Mapping[str, Any | None] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Any | None = None,
         files: Mapping[str, Any] | None = None,
+        audit_log_reason: str | None = None,
     ) -> httpx.Response:
         url = f"{self._base_url}/{path.lstrip('/')}"
         clean_params = {key: value for key, value in (params or {}).items() if value is not None}
-        headers = self._headers()
+        headers = self._headers(
+            audit_log_reason=audit_log_reason,
+            json_content=files is None,
+        )
         if files is not None:
             headers.pop("Content-Type", None)
-        response = await self._client.request(
+        response = await self._request_with_rate_limit(
             method,
             url,
             headers=headers,
             params=clean_params,
-            json=json_body if files is None else None,
+            json_body=json_body if files is None else None,
             files=files,
         )
         if response.status_code >= 400:
@@ -108,6 +123,60 @@ class DiscordRestClient:
                 message = response.text
             raise DiscordRestError(response.status_code, message)
         return response
+
+    async def _request_with_rate_limit(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        params: Mapping[str, Any | None],
+        json_body: Any | None = None,
+        files: Mapping[str, Any] | None = None,
+    ) -> httpx.Response:
+        for attempt in range(2):
+            response = await self._client.request(
+                method,
+                url,
+                headers=headers,
+                params=params,
+                json=json_body if files is None else None,
+                files=files,
+            )
+            if response.status_code != 429 or attempt > 0:
+                return response
+            retry_after = 1.0
+            try:
+                retry_after = float(response.json().get("retry_after", retry_after))
+            except (TypeError, ValueError):
+                retry_after = 1.0
+            await asyncio.sleep(min(max(retry_after, 0.25), 10.0))
+        return response
+
+    async def request_api(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any | None] | None = None,
+        json_body: Any | None = None,
+        audit_log_reason: str | None = None,
+    ) -> Any:
+        method = method.upper().strip()
+        if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+            raise ValueError("method must be GET, POST, PUT, PATCH, or DELETE")
+        if path.startswith(("http://", "https://")):
+            raise ValueError("path must be a Discord API path, not a full URL")
+        if path.startswith("/api/v"):
+            parts = path.split("/", 3)
+            path = parts[3] if len(parts) > 3 else ""
+        return await self._request_json(
+            method,
+            path,
+            params=params,
+            json_body=json_body,
+            audit_log_reason=audit_log_reason,
+        )
 
     async def get_current_user(self) -> dict[str, Any]:
         return await self._request_json("GET", "users/@me")

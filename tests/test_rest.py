@@ -385,3 +385,35 @@ async def test_send_message_with_attachments_uses_multipart(tmp_path) -> None:
 
     assert message.id == "790"
     assert message.raw["attachments"][0]["filename"] == "note.txt"
+
+
+@pytest.mark.asyncio
+async def test_request_api_sends_audit_log_reason_and_rejects_full_url() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"id": "chan1", "name": "ops"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = DiscordRestClient(
+            "Bot token",
+            base_url="https://discord.test/api/v10",
+            client=http_client,
+        )
+        result = await client.request_api(
+            "PATCH",
+            "/api/v10/channels/chan1",
+            json_body={"name": "ops"},
+            audit_log_reason="rename channel",
+        )
+
+        with pytest.raises(ValueError, match="not a full URL"):
+            await client.request_api("GET", "https://discord.com/api/v10/users/@me")
+
+    assert result == {"id": "chan1", "name": "ops"}
+    assert seen[0].method == "PATCH"
+    assert seen[0].url.path == "/api/v10/channels/chan1"
+    assert json.loads(seen[0].content) == {"name": "ops"}
+    assert seen[0].headers["Authorization"] == "Bot token"
+    assert seen[0].headers["X-Audit-Log-Reason"] == "rename%20channel"

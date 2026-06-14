@@ -12,12 +12,18 @@ features require a user-session context.
 
 This project currently supports:
 
+- a safe official Discord API escape hatch through `discord_api_request`
+- current user/bot inspection and bot invite URL generation
+- relationship/message-request listing, polling, accepting, deleting, profiles, and ack
 - list DM channels when the auth mode supports them
+- open/create DM channels and send/read/edit/delete private messages by user ID
 - read recent messages
 - send messages
 - reply to a specific message
 - edit/delete messages the authenticated actor owns or can manage
 - add/remove reactions
+- inspect raw messages and attachment metadata
+- pin/unpin messages, bulk-delete messages, and crosspost announcement messages
 - send local file attachments
 - send typing indicators and natural typed messages
 - keep a singleton Discord Gateway websocket open
@@ -28,11 +34,37 @@ This project currently supports:
 - list servers/guilds
 - list server text-like channels
 - read/send/reply/react in server channels
+- list every server channel type, active threads, and forum posts
+- inspect/edit server settings, widget, welcome screen, onboarding, and read audit logs
+- create/edit/delete text, voice, stage, category, and forum channels
+- move channels and manage channel permission overwrites
+- create servers from guild templates where Discord allows it
+- manage roles and role assignment
+- read/search/modify members, add OAuth guild members, nicknames, voice state, timeouts,
+  kicks, bans, and ban lists
+- create/read/delete invites
+- manage guild templates
+- create/list/delete/send webhooks
+- manage scheduled events
+- manage custom emojis
+- apply a JSON server blueprint inside an existing server
 
 > Safety note: use a Discord bot token for public, shared, or production deployments.
 > If you choose to experiment locally with a user-session Authorization token, treat it
 > like a password, keep it private, never commit it, and understand that automating user
 > accounts may violate Discord's terms of service.
+>
+> This MCP intentionally does not extract Discord tokens from browsers, replay private
+> web-client internals, or depend on captured account traffic. For unwrapped features,
+> use `discord_api_request` against official Discord API paths with a token you supplied
+> explicitly.
+>
+> Discord's app-facing server creation is template-based and token/eligibility dependent.
+> Use `create_server`/`create_server_from_template` with a template code where Discord allows it.
+> Otherwise, create the server manually, invite the bot, and run `apply_server_blueprint`.
+>
+> See `docs/discord_endpoint_map.md` for the sanitized route map from Agent MCPB recording
+> and the Java MCP feature merge. Do not commit raw recordings.
 
 ## Current Stack
 
@@ -82,7 +114,7 @@ Optional environment variables:
 ```bash
 DISCORD_TOKEN_FILE=./token.txt
 DISCORD_MCP_DB=./.local/discord_user_mcp.sqlite
-DISCORD_API_BASE=https://discord.com/api/v9
+DISCORD_API_BASE=https://discord.com/api/v10
 DISCORD_GATEWAY_URL='wss://gateway.discord.gg/?v=9&encoding=json'
 MCP_HOST=127.0.0.1
 MCP_PORT=8085
@@ -91,6 +123,9 @@ NATURAL_TYPING_WPM=55
 NATURAL_TYPING_MIN_SECONDS=1.0
 NATURAL_TYPING_MAX_SECONDS=20.0
 ```
+
+Set `ALLOW_SEND=false` when you want read-only exploration. Mutating tools, including the
+raw API request helper, will refuse writes in that mode.
 
 ## Run Tests
 
@@ -207,6 +242,152 @@ Inputs:
   "query": "general"
 }
 ```
+
+### Server And Admin Tools
+
+The rebuilt MCP adds typed tools for common server workflows:
+
+```text
+get_current_user
+get_current_bot
+get_bot_invite_url
+list_relationships
+list_message_requests
+poll_message_requests
+accept_message_request
+delete_relationship
+get_user_profile
+ack_message
+create_dm_channel
+send_private_message
+read_private_messages
+edit_private_message
+delete_private_message
+get_server_info
+list_all_server_channels
+list_channels
+list_active_threads
+create_server
+create_server_from_template
+get_server_preview
+list_server_voice_regions
+get_server_vanity_url
+get_server_widget
+get_server_widget_json
+edit_server_widget
+get_welcome_screen
+edit_welcome_screen
+get_server_onboarding
+edit_server_onboarding
+leave_server
+edit_server_settings
+get_audit_log
+create_text_channel
+create_voice_channel
+create_stage_channel
+create_category
+create_forum_channel
+edit_forum_channel
+list_forum_channels
+get_forum_channel_info
+list_forum_tags
+create_forum_post
+list_forum_posts
+modify_forum_post
+get_channel_info
+find_channel
+find_category
+list_channels_in_category
+move_channel
+edit_channel
+edit_text_channel
+edit_voice_channel
+edit_category
+delete_channel
+delete_category
+list_channel_permission_overwrites
+upsert_channel_permission_overwrite
+upsert_role_channel_permissions
+upsert_member_channel_permissions
+delete_channel_permission_overwrite
+pin_message
+unpin_message
+bulk_delete_messages
+crosspost_message
+get_message
+get_attachment
+list_roles
+create_role
+edit_role
+delete_role
+assign_role
+remove_role
+get_member
+get_member_info
+list_members
+search_members
+get_user_id_by_name
+add_member_to_server
+list_member_roles
+modify_member
+set_nickname
+move_member
+disconnect_member
+modify_voice_state
+timeout_member
+remove_timeout
+kick_member
+ban_member
+unban_member
+list_bans
+get_bans
+list_guild_scheduled_events
+create_guild_scheduled_event
+get_guild_scheduled_event
+edit_guild_scheduled_event
+delete_guild_scheduled_event
+get_guild_scheduled_event_users
+create_invite
+get_invite
+get_invite_details
+list_invites
+delete_invite
+get_guild_template
+list_guild_templates
+create_guild_template
+sync_guild_template
+edit_guild_template
+delete_guild_template
+list_emojis
+get_emoji
+get_emoji_details
+create_emoji
+edit_emoji
+delete_emoji
+create_webhook
+list_channel_webhooks
+list_guild_webhooks
+list_webhooks
+get_webhook
+send_webhook_message
+delete_webhook
+get_server_blueprint_schema
+apply_server_blueprint
+```
+
+For official Discord endpoints that are not yet wrapped, use `discord_api_request`:
+
+```json
+{
+  "method": "GET",
+  "path": "/guilds/CUSTOM_OR_DISCORD_ID/audit-logs",
+  "params": {"limit": 25},
+  "json_body": null,
+  "audit_log_reason": null
+}
+```
+
+`path` must be a Discord API path, not a full URL.
 
 ### `read_messages`
 

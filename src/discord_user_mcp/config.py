@@ -16,7 +16,7 @@ class ConfigError(RuntimeError):
 class Settings:
     token_file: Path = DEFAULT_TOKEN_FILE
     db_path: Path = DEFAULT_DB_PATH
-    discord_api_base: str = "https://discord.com/api/v9"
+    discord_api_base: str = "https://discord.com/api/v10"
     discord_gateway_url: str = "wss://gateway.discord.gg/?v=9&encoding=json"
     mcp_host: str = "127.0.0.1"
     mcp_port: int = 8085
@@ -30,7 +30,7 @@ class Settings:
         return cls(
             token_file=Path(os.getenv("DISCORD_TOKEN_FILE", str(DEFAULT_TOKEN_FILE))),
             db_path=Path(os.getenv("DISCORD_MCP_DB", str(DEFAULT_DB_PATH))),
-            discord_api_base=os.getenv("DISCORD_API_BASE", "https://discord.com/api/v9").rstrip("/"),
+            discord_api_base=os.getenv("DISCORD_API_BASE", "https://discord.com/api/v10").rstrip("/"),
             discord_gateway_url=os.getenv(
                 "DISCORD_GATEWAY_URL", "wss://gateway.discord.gg/?v=9&encoding=json"
             ),

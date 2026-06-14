@@ -50,6 +50,7 @@ class FakeRest:
         self.removed_reactions: list[tuple[str, str, str]] = []
         self.typing_channel_ids: list[str] = []
         self.attachment_sends: list[tuple[str, list[str], str | None]] = []
+        self.api_calls: list[dict[str, Any]] = []
         self.custom_status: dict[str, Any] | None = {
             "text": "working",
             "emoji_name": None,
@@ -87,6 +88,69 @@ class FakeRest:
             }
         )
         return {"status": "dnd", "custom_status": self.custom_status}
+
+    async def request_api(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any | None] | None = None,
+        json_body: Any | None = None,
+        audit_log_reason: str | None = None,
+    ) -> Any:
+        call = {
+            "method": method,
+            "path": path,
+            "params": params,
+            "json_body": json_body,
+            "audit_log_reason": audit_log_reason,
+        }
+        self.api_calls.append(call)
+        if method == "DELETE":
+            return None
+        if path == "users/@me/relationships":
+            return [
+                {
+                    "id": "u-request",
+                    "type": 4,
+                    "user": {"id": "u-request", "username": "requester"},
+                },
+                {
+                    "id": "u-friend",
+                    "type": 1,
+                    "user": {"id": "u-friend", "username": "friend"},
+                },
+            ]
+        if path.startswith("users/@me/relationships/"):
+            return None
+        if path.startswith("users/") and path.endswith("/profile"):
+            return {"user": {"id": path.split("/")[1]}}
+        if path == "users/@me/channels":
+            return {"id": "dm1", "type": 1, "recipients": [{"id": "u1"}]}
+        if path.startswith("guilds/templates/"):
+            return {"id": "new-guild", "name": (json_body or {}).get("name")}
+        if path.endswith("/channels"):
+            return {
+                "id": "created-channel",
+                "guild_id": "guild1",
+                "name": (json_body or {}).get("name", "created"),
+                "type": (json_body or {}).get("type", 0),
+            }
+        if path.endswith("/roles"):
+            return {
+                "id": "created-role",
+                "guild_id": "guild1",
+                "name": (json_body or {}).get("name", "created-role"),
+            }
+        if path.startswith("channels/") and "/messages/" in path and method == "GET":
+            return {
+                "id": "m2",
+                "channel_id": "chan1",
+                "attachments": [{"id": "a1", "filename": "image.png"}],
+            }
+        if "/members/" in path:
+            return {"ok": True}
+        return {"ok": True, "path": path}
 
     async def list_dm_channels(self) -> list[DMChannel]:
         return self.channels
@@ -286,6 +350,188 @@ async def test_list_servers_and_server_channels(tmp_path: Path) -> None:
         channels = await runtime.list_server_channels("guild1", query="general")
         assert channels[0]["channel_id"] == "chan1"
         assert channels[0]["guild_id"] == "guild1"
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_official_api_wrappers_route_through_rest(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        created = await runtime.create_text_channel(
+            "guild1",
+            "planning",
+            topic="work",
+            audit_log_reason="setup",
+        )
+        assert created["id"] == "created-channel"
+        assert runtime.rest.api_calls[-1] == {
+            "method": "POST",
+            "path": "guilds/guild1/channels",
+            "params": None,
+            "json_body": {
+                "name": "planning",
+                "type": 0,
+                "topic": "work",
+            },
+            "audit_log_reason": "setup",
+        }
+
+        await runtime.timeout_member(
+            "guild1",
+            "u1",
+            duration_seconds=60,
+            audit_log_reason="timeout",
+        )
+        timeout_call = runtime.rest.api_calls[-1]
+        assert timeout_call["method"] == "PATCH"
+        assert timeout_call["path"] == "guilds/guild1/members/u1"
+        assert timeout_call["json_body"]["communication_disabled_until"].endswith("Z")
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_message_request_tools_route_through_rest(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        requests = await runtime.list_message_requests()
+        assert [request["id"] for request in requests] == ["u-request"]
+
+        polled = await runtime.poll_message_requests(known_user_ids=["u-friend"])
+        assert polled["request_user_ids"] == ["u-request"]
+        assert [request["id"] for request in polled["new_requests"]] == ["u-request"]
+
+        await runtime.accept_message_request("u-request")
+        assert runtime.rest.api_calls[-1] == {
+            "method": "PUT",
+            "path": "users/@me/relationships/u-request",
+            "params": None,
+            "json_body": {"confirm_stranger_request": True},
+            "audit_log_reason": None,
+        }
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_create_server_requires_template_code(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        with pytest.raises(RuntimeError, match="template"):
+            await runtime.create_server("New Server")
+
+        created = await runtime.create_server("New Server", template_code="abc123")
+        assert created == {"id": "new-guild", "name": "New Server"}
+        assert runtime.rest.api_calls[-1]["path"] == "guilds/templates/abc123"
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_extended_server_wrappers_route_through_rest(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        await runtime.create_stage_channel("guild1", "Stage")
+        assert runtime.rest.api_calls[-1]["json_body"] == {"name": "Stage", "type": 13}
+
+        await runtime.upsert_role_channel_permissions(
+            "chan1",
+            "role1",
+            allow="1024",
+            deny="0",
+        )
+        assert runtime.rest.api_calls[-1]["path"] == "channels/chan1/permissions/role1"
+        assert runtime.rest.api_calls[-1]["json_body"] == {
+            "type": 0,
+            "allow": "1024",
+            "deny": "0",
+        }
+
+        await runtime.create_guild_scheduled_event(
+            "guild1",
+            name="Town Hall",
+            scheduled_start_time="2026-06-15T20:00:00Z",
+            entity_type=2,
+            channel_id="voice1",
+        )
+        assert runtime.rest.api_calls[-1]["path"] == "guilds/guild1/scheduled-events"
+
+        await runtime.create_emoji("guild1", name="wave", image="data:image/png;base64,AAA=")
+        assert runtime.rest.api_calls[-1]["path"] == "guilds/guild1/emojis"
+
+        await runtime.send_webhook_message("webhook1", "secret-token", content="hello")
+        assert runtime.rest.api_calls[-1]["path"] == "webhooks/webhook1/secret-token"
+        assert runtime.rest.api_calls[-1]["json_body"] == {"content": "hello"}
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_member_null_fields_are_preserved(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        await runtime.disconnect_member("guild1", "u1")
+        assert runtime.rest.api_calls[-1]["json_body"] == {"channel_id": None}
+
+        await runtime.remove_timeout("guild1", "u1")
+        assert runtime.rest.api_calls[-1]["json_body"] == {
+            "communication_disabled_until": None
+        }
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_private_message_by_user_id_opens_dm(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path)
+    try:
+        sent = await runtime.send_private_message("u1", "hello")
+        assert sent["channel_id"] == "dm1"
+        assert runtime.rest.api_calls[0]["path"] == "users/@me/channels"
+        assert runtime.rest.sent == [("dm1", "hello")]
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_apply_server_blueprint_dry_run_does_not_write(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path, allow_send=False)
+    try:
+        result = await runtime.apply_server_blueprint(
+            "guild1",
+            {
+                "roles": [{"name": "Admin", "permissions": "8"}],
+                "categories": [
+                    {
+                        "name": "Info",
+                        "text_channels": [{"name": "rules"}],
+                        "voice_channels": [{"name": "Lobby"}],
+                    }
+                ],
+            },
+            dry_run=True,
+        )
+
+        assert result["dry_run"] is True
+        assert [action["action"] for action in result["actions"]] == [
+            "create_role",
+            "create_category",
+            "create_text_channel",
+            "create_voice_channel",
+        ]
+        assert runtime.rest.api_calls == []
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_discord_api_request_respects_allow_send(tmp_path: Path) -> None:
+    runtime = make_runtime(tmp_path, allow_send=False)
+    try:
+        await runtime.discord_api_request("GET", "guilds/guild1")
+        with pytest.raises(RuntimeError, match="ALLOW_SEND=false"):
+            await runtime.discord_api_request("POST", "channels/chan1/messages", json_body={})
     finally:
         await runtime.close()
 
